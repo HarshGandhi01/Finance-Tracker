@@ -295,9 +295,9 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
                            and t["direction"] == "debit"
                            and not t["is_peer"])
 
-    food_rollover = float(settings.get("food_rollover_balance", 0.0))
-    total_food_budget_today = target_daily + food_rollover
-    food_remaining_today = total_food_budget_today - today_food_spend
+    # Get the 'Additional Food' silo balance from settings
+    food_silo = float(settings.get("food_silo_balance", 0.0))
+    food_remaining_today = (target_daily + food_silo) - today_food_spend
 
     food_balance = safe_to_spend
     safe_per_meal = max(food_balance, 0) / max(meals_remaining, 1)
@@ -310,5 +310,5 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
         days_remaining=days_remaining, meals_remaining=meals_remaining,
         safe_per_meal=safe_per_meal, daily_avg=daily_avg, target_daily=target_daily, txs=txs,
         safe_to_spend=safe_to_spend, daily_allowance=daily_allowance, fun_money=fun_money, rollover=rollover,
-        today_food_spend=today_food_spend, food_rollover=food_rollover, food_remaining_today=food_remaining_today
+        today_food_spend=today_food_spend, food_rollover=food_silo, food_remaining_today=food_remaining_today
     )
