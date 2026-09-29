@@ -194,18 +194,20 @@ with st.expander("Settings & maintenance"):
         f"rollover {m.get('food_rollover', 0)} | remaining {m.get('food_remaining_today', 0)}"
     )
 
-    with st.expander("➕ Add manual transaction"):
-        m_merchant = st.text_input("Merchant", placeholder="e.g. Hungry")
-        m_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
-        m_cat = st.selectbox("Category", options=db.CATEGORIES)
-        m_dir = st.selectbox("Direction", options=["debit", "credit"])
-        if st.button("Log transaction", width="stretch"):
-            if m_merchant and m_amount > 0:
-                db.add_transaction(today, m_merchant, m_amount, direction=m_dir, category=m_cat)
-                st.success(f"Logged {m_dir}: {m_merchant}")
-                st.rerun()
-            else:
-                st.error("Enter a merchant and an amount.")
+    st.markdown("**➕ Add manual transaction**")
+    m_merchant = st.text_input("Merchant", placeholder="e.g. Hungry")
+    m_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
+    m_cat = st.selectbox("Category", options=db.CATEGORIES)
+    m_dir = st.selectbox("Direction", options=["debit", "credit"])
+    if st.button("Log transaction", width="stretch"):
+        if m_merchant and m_amount > 0:
+            db.add_transaction(today, m_merchant, m_amount, direction=m_dir, category=m_cat)
+            st.success(f"Logged {m_dir}: {m_merchant}")
+            st.rerun()
+        else:
+            st.error("Enter a merchant and an amount.")
+
+    st.divider()
 
     new_bal = st.number_input(
         "Adjust current balance (₹)", value=float(round(m["balance"])), step=100.0, format="%.2f", key="admin_bal"
