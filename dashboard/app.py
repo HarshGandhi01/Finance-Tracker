@@ -14,8 +14,6 @@ import streamlit as st
 import db
 from theme import apply_theme, inr, spending_donut
 
-importlib.reload(db)
-
 TARGET_DAILY = 350.0
 
 st.set_page_config(
@@ -36,12 +34,6 @@ def _shift_month(d: date, delta: int) -> str:
 
 month_now = _shift_month(today, 0)
 db.update_food_silo(today, db.get_transactions(month_now), TARGET_DAILY)
-
-
-def _shift_month(d: date, delta: int) -> str:
-    idx = d.year * 12 + (d.month - 1) + delta
-    return f"{idx // 12}-{idx % 12 + 1:02d}"
-
 
 month_options = [_shift_month(today, -1), _shift_month(today, 0), _shift_month(today, 1)]
 
