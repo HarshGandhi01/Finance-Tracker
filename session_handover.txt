@@ -1,0 +1,26 @@
+# SESSION HANDOVER - Am I Cooked?
+Date: 2026-09-20
+
+## Current State
+- Backend: FastAPI / Vercel / Neon (Postgres)
+- Frontend: Streamlit (Linear-style minimalist UI)
+- Key Feature: "Food Silo" with daily rollover budget.
+
+## The "Ghost" Bug (CRITICAL)
+The user is seeing "₹0.00" and "Food budget is exactly zero" on the production site, despite the debug line showing "Budget 350.0 | Spend 0 | Rollover 0".
+This indicates a massive discrepancy between the `food_remaining` variable and the rendered output, or a severe caching issue on Vercel/Streamlit.
+
+## Recent Changes
+- Updated `index.py` to explicitly handle `/log_transaction` to fix 404s.
+- Updated `dashboard/app.py` to show category tags in the ledger.
+- Attempted to fix the Food Status display logic.
+
+## Pending Tasks for Tomorrow
+1. Fix the Food Status display (it's showing 0 when it should be 350).
+2. Verify why the variable `food_remaining` is not rendering correctly in the `food-status-value` div.
+3. Test a payment to ensure the webhook $\rightarrow$ db $\rightarrow$ dashboard flow is 100% seamless.
+
+## Technical Details
+- Target Daily: 350.0
+- Route: https://files-zeta-five.vercel.app/log_transaction
+- Token: Check environment variables for COOKED_TOKEN

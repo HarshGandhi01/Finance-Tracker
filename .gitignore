@@ -1,0 +1,40 @@
+# --- SENSITIVE DATA ---
+# Never push financial statements or personal documents
+*.pdf
+*.csv
+*.xlsx
+*.json
+# Except for config files we explicitly allow
+
+# --- SECRETS & KEYS ---
+# Environment variables and secret keys
+.env
+.env.local
+.env.*.local
+secrets.py
+*.pem
+*.key
+CLAUDE-SECURITY-*/
+
+
+# --- DATABASE ---
+# Local SQLite databases
+*.db
+*.sqlite3
+
+# --- PYTHON / VENV ---
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- STREAMLIT ---
+.streamlit/config.toml
+
+# --- OS SPECIFIC ---
+.DS_Store
+Thumbs.db
