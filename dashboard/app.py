@@ -214,6 +214,11 @@ with st.expander("Settings & maintenance"):
         db.set_balance(new_bal)
         st.rerun()
 
+    if st.button("Reset Food Silo to 0", width="stretch"):
+        db.set_food_silo_zero()
+        st.success("Food silo has been reset!")
+        st.rerun()
+
     unparsed = db.get_unparsed()
     if unparsed:
         st.divider()

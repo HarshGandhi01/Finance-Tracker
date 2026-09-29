@@ -181,6 +181,12 @@ def set_balance(amount: float):
     set_setting("anchor_max_id", max_id)
 
 
+def set_food_silo_zero():
+    \"\"\"Reset the food silo balance to zero.\"\"\"
+    set_setting("food_silo_balance", 0.0)
+    set_setting("food_silo_last_update", "")
+
+
 def current_balance(month: str, month_txs: list, settings: dict | None = None):
     s = settings if settings is not None else all_settings()
     anchor = s.get("anchor_balance")
