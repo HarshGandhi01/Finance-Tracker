@@ -265,13 +265,13 @@ def update_food_silo(today: date, transactions: list, target_daily: float = 350.
     new_silo = current_silo + diff
 
     # We only update once per day to avoid repeated additive updates on every load.
-    # Check if we've already processed today's silo update.
     last_update = get_setting("food_silo_last_update")
     if last_update == today_str:
         return
 
     set_setting("food_silo_balance", new_silo)
     set_setting("food_silo_last_update", today_str)
+
 
 def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dict:
     settings = all_settings()
@@ -303,8 +303,7 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     reserved = sum(max(funds[n] - fund_spent[n], 0) for n in funds)
 
     rollover = float(settings.get("rollover_balance", 0.0))
-    # FIX: Safe to spend should be based on ACTUAL balance, not balance + expected income.
-    # Expected income is not "safe" until it actually hits the account.
+    # Fix: Safe to spend based on actual balance only
     safe_to_spend = balance - reserved
 
     days_remaining = days_in_month - today.day + 1
@@ -323,7 +322,6 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
                            and t["direction"] == "debit"
                            and not t["is_peer"])
 
-    # Get the 'Additional Food' silo balance from settings
     food_silo = float(settings.get("food_silo_balance", 0.0))
     food_remaining_today = (target_daily + food_silo) - today_food_spend
 
