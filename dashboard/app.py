@@ -1,6 +1,5 @@
 """Am I Cooked? — dashboard (redesign: presentation only, db calls unchanged)."""
 import hashlib
-import importlib
 import os
 import sys
 from datetime import date
@@ -53,8 +52,9 @@ m = db.compute_metrics(month, today, TARGET_DAILY)
 
 daily_avg = m.get("daily_avg", 0.0)
 balance = m.get("balance", 0.0)
+safe_to_spend = m.get("safe_to_spend", balance)
 divisor = max(daily_avg, TARGET_DAILY)
-days_left = balance / divisor if divisor > 0 else 999
+days_left = safe_to_spend / divisor if divisor > 0 else 999
 
 try:
     food_remaining = float(m.get("food_remaining_today", 0.0))
@@ -85,7 +85,7 @@ with hero_left:
         <div class="clock">
           <div class="clock-label">Days until broke</div>
           <div class="clock-value {clock_tone}">{int(days_left)}</div>
-          <div class="clock-sub">{inr(balance)} left, spending {inr(divisor)} a day</div>
+          <div class="clock-sub">{inr(safe_to_spend)} left, spending {inr(divisor)} a day</div>
         </div>
         """,
         unsafe_allow_html=True,

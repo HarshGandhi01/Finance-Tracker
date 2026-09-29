@@ -321,9 +321,9 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     days_remaining = days_in_month - today.day + 1
     meals_remaining = days_remaining * 2
 
-    # Use only actual balance for allowance - no expected income
-    total_liquid = balance
-    daily_allowance = (total_liquid + rollover) / max(days_remaining, 1)
+    # Spendable money only: balance minus what's reserved for sinking funds,
+    # no expected/incoming income counted.
+    daily_allowance = (safe_to_spend + rollover) / max(days_remaining, 1)
     fun_money = daily_allowance - target_daily
 
     # --- Food-Silo Logic ---
