@@ -33,7 +33,12 @@ def _shift_month(d: date, delta: int) -> str:
     return f"{idx // 12}-{idx % 12 + 1:02d}"
 
 month_now = _shift_month(today, 0)
-db.update_food_silo(today, db.get_transactions(month_now), TARGET_DAILY)
+try:
+    db.update_food_silo(today, db.get_transactions(month_now), TARGET_DAILY)
+except AttributeError:
+    # This handles cases where the deployed version of db.py
+    # might be out of sync with the app.py during a push.
+    pass
 
 month_options = [_shift_month(today, -1), _shift_month(today, 0), _shift_month(today, 1)]
 
