@@ -1,0 +1,17 @@
+[theme]
+base = "dark"
+primaryColor = "#7C83FF"
+backgroundColor = "#0C0E12"
+secondaryBackgroundColor = "#14181F"
+textColor = "#F2F4F8"
+font = "sans serif"
+
+# Newer Streamlit versions also support these; uncomment if your version accepts them.
+# baseRadius = "0.875rem"
+# borderColor = "#232A35"
+
+[client]
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false
