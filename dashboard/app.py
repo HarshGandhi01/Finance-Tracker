@@ -314,6 +314,19 @@ st.markdown(
     </div>
     """, unsafe_allow_html=True
 )
+
+# NEW: Food Silo Balance Card
+food_silo = m.get("food_rollover", 0.0)
+st.markdown(
+    f"""
+    <div class="food-status-card" style="margin-top: 1rem; background: var(--surface-alt, #f9f9f9); border: 1px solid #eee;">
+        <div class="food-status-label">Additional Food Silo</div>
+        <div class="food-status-value" style="color: #2e7d32;">{inr(food_silo)}</div>
+        <div class="food-status-subtext">Saved funds available for overspending</div>
+    </div>
+    """, unsafe_allow_html=True
+)
+
 st.markdown(f'<div style="text-align:center; color:#666; font-size:0.7rem; margin-bottom:2rem;">Debug: Date {today} | Budget {TARGET_DAILY} | Spend {m.get("today_food_spend", 0)} | Rollover {m.get("food_rollover", 0)} | Remaining {m.get("food_remaining_today", 0)}</div>', unsafe_allow_html=True)
 
 # 3. The Burn Grid
