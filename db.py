@@ -184,7 +184,7 @@ def set_balance(amount: float):
 def set_food_silo_zero():
     """Reset the food silo balance to zero."""
     set_setting("food_silo_balance", 0.0)
-    set_setting("food_silo_last_update", "")
+    set_setting("food_silo_last_update", str(today_ist()))
 
 
 def current_balance(month: str, month_txs: list, settings: dict | None = None):
@@ -255,33 +255,45 @@ def delete_unparsed(uid: int):
 
 def update_food_silo(today: date, transactions: list, target_daily: float = 350.0):
     """
-    Update the food silo balance based on the PREVIOUS day's spending.
-    This is called at the start of a new day to move yesterday's remainder into the silo.
+    Update the food silo balance based on missed days up to yesterday.
+    This is called at the start of a new day to move remaining budgets into the silo.
     """
-    yesterday = today - timedelta(days=1)
-    yesterday_str = str(yesterday)
     today_str = str(today)
-
-    # 1. Calculate what was actually spent YESTERDAY
-    yesterday_food_spend = sum(t["amount"] for t in transactions
-                               if str(t["date"]).startswith(yesterday_str)
-                               and t["category"] == "Food"
-                               and t["direction"] == "debit"
-                               and not t["is_peer"])
-
-    # 2. Difference between target and spent yesterday
-    diff = target_daily - yesterday_food_spend
-
-    # 3. Update the persistent silo balance
+    last_update_str = get_setting("food_silo_last_update")
+    
+    if last_update_str == today_str:
+        return
+        
     current_silo = float(get_setting("food_silo_balance", 0.0))
-    new_silo = current_silo + diff
-
-    # 4. ONLY update if we haven't already processed the rollover for today
-    last_update = get_setting("food_silo_last_update")
-    if last_update == today_str:
+    
+    if not last_update_str:
+        # If never initialized, start tracking from today without retroactively adding
+        set_setting("food_silo_last_update", today_str)
+        return
+        
+    try:
+        last_update_date = datetime.strptime(last_update_str, "%Y-%m-%d").date()
+    except ValueError:
+        set_setting("food_silo_last_update", today_str)
         return
 
-    set_setting("food_silo_balance", new_silo)
+    # Process all missing days up to yesterday
+    current_date = last_update_date
+    while current_date < today:
+        current_date_str = str(current_date)
+        
+        # Calculate spend for the current missed day using the DB
+        with conn() as c:
+            spend_rows = _rows(c, "SELECT SUM(amount) as s FROM transactions "
+                                  "WHERE date LIKE :d AND category='Food' "
+                                  "AND direction='debit' AND is_peer=0", 
+                                  d=current_date_str + "%")
+        day_spend = float(spend_rows[0]["s"] or 0.0)
+        
+        current_silo += (target_daily - day_spend)
+        current_date += timedelta(days=1)
+        
+    set_setting("food_silo_balance", current_silo)
     set_setting("food_silo_last_update", today_str)
 
 
