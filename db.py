@@ -182,7 +182,7 @@ def set_balance(amount: float):
 
 
 def set_food_silo_zero():
-    \"\"\"Reset the food silo balance to zero.\"\"\"
+    """Reset the food silo balance to zero."""
     set_setting("food_silo_balance", 0.0)
     set_setting("food_silo_last_update", "")
 
