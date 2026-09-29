@@ -17,6 +17,7 @@
 
 /* ---------- Base ---------- */
 html, body, .stApp, [class*="st-"] { font-family: var(--font-body); }
+[data-testid="stIconMaterial"] { font-family: "Material Symbols Rounded" !important; }
 .stApp { background: var(--bg); color: var(--text); }
 .block-container { max-width: 1120px; padding-top: 1.5rem; padding-bottom: 4rem; }
 [data-testid="stHeader"] { background: transparent; }
