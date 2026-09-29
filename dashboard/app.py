@@ -418,18 +418,11 @@ else:
 
         col_tx, col_cat = st.columns([0.85, 0.15])
         with col_tx:
-            st.markdown(
-                f"""
-                <div class="ledger-row" style="border-bottom:none; padding: 0;">
-                    <div style="display:flex; align-items:center; gap: 10px;">
-                        <div class="ledger-merchant">{tx['merchant']}</div>
-                        <div class="ledger-category-tag">{tx['category']}</div>
-                        <div class="ledger-date">{tx_date_str}</div>
-                    </div>
-                    <div class="ledger-amount {amt_class}">{sign}{inr(tx['amount'])}</div>
-                </div>
-                """, unsafe_allow_html=False
-            )
+        with col_tx:
+            # Use a clean, secure display instead of raw HTML
+            st.markdown(f"**{tx['merchant']}**  \n*{tx['category']}* • {tx_date_str}")
+            st.markdown(f"**{sign}{inr(tx['amount'])}**")
+            st.markdown("---")
         with col_cat:
             new_cat = st.selectbox(
                 "Cat",
