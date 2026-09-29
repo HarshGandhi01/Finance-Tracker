@@ -248,11 +248,11 @@ def delete_unparsed(uid: int):
 
 
 def update_food_silo(today: date, transactions: list, target_daily: float = 350.0):
-    \"\"\"
+    """
     Update the food silo balance based on today's spending.
     If spend < target, the difference is added to the silo.
     If spend > target, the difference is subtracted from the silo.
-    \"\"\"
+    """
     today_str = str(today)
     today_food_spend = sum(t["amount"] for t in transactions
                            if str(t["date"]).startswith(today_str)
