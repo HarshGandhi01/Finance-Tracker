@@ -9,9 +9,6 @@ from pypdf import PdfReader
 
 import db
 
-# Set the DB URL for the script
-os.environ["DATABASE_URL"] = os.getenv("DATABASE_URL")
-
 PDF_PATH = "gpay_statement_20260801_20260831.pdf"
 
 def parse_statement():

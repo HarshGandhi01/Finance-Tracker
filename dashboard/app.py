@@ -1,6 +1,5 @@
 """Am I Cooked? — dashboard (redesign: presentation only, db calls unchanged)."""
 import hashlib
-import importlib
 import os
 import sys
 from datetime import date
@@ -53,8 +52,9 @@ m = db.compute_metrics(month, today, TARGET_DAILY)
 
 daily_avg = m.get("daily_avg", 0.0)
 balance = m.get("balance", 0.0)
+safe_to_spend = m.get("safe_to_spend", balance)
 divisor = max(daily_avg, TARGET_DAILY)
-days_left = balance / divisor if divisor > 0 else 999
+days_left = safe_to_spend / divisor if divisor > 0 else 999
 
 try:
     food_remaining = float(m.get("food_remaining_today", 0.0))
@@ -85,7 +85,7 @@ with hero_left:
         <div class="clock">
           <div class="clock-label">Days until broke</div>
           <div class="clock-value {clock_tone}">{int(days_left)}</div>
-          <div class="clock-sub">{inr(balance)} left, spending {inr(divisor)} a day</div>
+          <div class="clock-sub">{inr(safe_to_spend)} left, spending {inr(divisor)} a day</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -187,14 +187,14 @@ with col_ledger:
                 st.error("Database update function not found. Please refresh the page.")
 
 # ---------------------------------------------------------------- admin
-st.markdown('<div style="height:2rem"></div>', unsafe_allow_html=True)
+st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
 with st.expander("Settings & maintenance"):
     st.caption(
         f"Debug: date {today} | budget {TARGET_DAILY} | spend {m.get('today_food_spend', 0)} | "
         f"rollover {m.get('food_rollover', 0)} | remaining {m.get('food_remaining_today', 0)}"
     )
 
-    with st.expander("➕ Add manual transaction"):
+    with st.popover("Add manual transaction", width="stretch"):
         m_merchant = st.text_input("Merchant", placeholder="e.g. Hungry")
         m_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
         m_cat = st.selectbox("Category", options=db.CATEGORIES)
@@ -207,11 +207,14 @@ with st.expander("Settings & maintenance"):
             else:
                 st.error("Enter a merchant and an amount.")
 
+    st.divider()
+
     new_bal = st.number_input(
         "Adjust current balance (₹)", value=float(round(m["balance"])), step=100.0, format="%.2f", key="admin_bal"
     )
     if st.button("Update balance", width="stretch"):
         db.set_balance(new_bal)
+        st.success(f"Balance updated to {inr(new_bal)}.")
         st.rerun()
 
     if st.button("Reset Food Silo to 0", width="stretch"):

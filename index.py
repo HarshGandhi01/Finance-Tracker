@@ -9,9 +9,6 @@ from sms_parser import AMT, categorize, parse_sms
 
 TOKEN = os.environ.get("COOKED_TOKEN")
 if not TOKEN:
-    import os
-TOKEN = os.getenv("COOKED_TOKEN")
-if not TOKEN:
     raise RuntimeError("COOKED_TOKEN environment variable must be set.")
 
 db.init_db()
@@ -31,10 +28,8 @@ async def _sms_text(request: Request) -> str:
 def health():
     return {"ok": True, "message": "Webhook is alive at root"}
 
-@app.post("/log_transaction")
-@app.post("/")
 @app.post("/{path:path}")
-async def log_transaction(request: Request, path: str = None):
+async def log_transaction(request: Request, path: str = ""):
     supplied = request.headers.get("x-token") or request.query_params.get("token") or ""
     if not hmac.compare_digest(supplied, TOKEN):
         raise HTTPException(status_code=401, detail="bad token")
