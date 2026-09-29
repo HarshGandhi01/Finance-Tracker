@@ -28,14 +28,12 @@ pio.templates["cooked_dark"] = go.layout.Template(
 )
 pio.templates.default = "cooked_dark"
 
-_HERE = Path(__file__).parent
-_CSS = next((p for p in (_HERE / "assets" / "styles.css", _HERE / "styles.css") if p.exists()), None)
+_CSS = Path(__file__).parent / "assets" / "styles.css"
 
 
 def apply_theme() -> None:
     """Inject the stylesheet. Call once, right after st.set_page_config."""
-    if _CSS is not None:
-        st.markdown(f"<style>{_CSS.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>{_CSS.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
 
 def inr(x: float, decimals: int = 0) -> str:
