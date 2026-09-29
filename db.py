@@ -255,22 +255,28 @@ def delete_unparsed(uid: int):
 
 def update_food_silo(today: date, transactions: list, target_daily: float = 350.0):
     """
-    Update the food silo balance based on today's spending.
-    If spend < target, the difference is added to the silo.
-    If spend > target, the difference is subtracted from the silo.
+    Update the food silo balance based on the PREVIOUS day's spending.
+    This is called at the start of a new day to move yesterday's remainder into the silo.
     """
+    yesterday = today - timedelta(days=1)
+    yesterday_str = str(yesterday)
     today_str = str(today)
-    today_food_spend = sum(t["amount"] for t in transactions
-                           if str(t["date"]).startswith(today_str)
-                           and t["category"] == "Food"
-                           and t["direction"] == "debit"
-                           and not t["is_peer"])
 
-    diff = target_daily - today_food_spend
+    # 1. Calculate what was actually spent YESTERDAY
+    yesterday_food_spend = sum(t["amount"] for t in transactions
+                               if str(t["date"]).startswith(yesterday_str)
+                               and t["category"] == "Food"
+                               and t["direction"] == "debit"
+                               and not t["is_peer"])
+
+    # 2. Difference between target and spent yesterday
+    diff = target_daily - yesterday_food_spend
+
+    # 3. Update the persistent silo balance
     current_silo = float(get_setting("food_silo_balance", 0.0))
     new_silo = current_silo + diff
 
-    # We only update once per day to avoid repeated additive updates on every load.
+    # 4. ONLY update if we haven't already processed the rollover for today
     last_update = get_setting("food_silo_last_update")
     if last_update == today_str:
         return
