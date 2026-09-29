@@ -155,34 +155,35 @@ with col_ledger:
             },
             index=[t["id"] for t in sorted_txs],
         )
+        ledger["Delete?"] = False
         cat_options = list(db.CATEGORIES) + sorted({c for c in ledger["Category"] if c not in db.CATEGORIES})
 
-        # Key changes whenever the data changes, so stale edits never get re-applied to shifted rows.
         sig = hashlib.md5(repr(list(zip(ledger.index, ledger["Category"]))).encode()).hexdigest()[:10]
         edited = st.data_editor(
             ledger,
             hide_index=True,
-            num_rows="dynamic",
             disabled=["Date", "Merchant", "Amount"],
             column_config={
                 "Date": st.column_config.DateColumn("Date", format="DD MMM", width="small"),
                 "Merchant": st.column_config.TextColumn("Merchant", width="medium"),
                 "Category": st.column_config.SelectboxColumn("Category", options=cat_options, required=True, width="small"),
                 "Amount": st.column_config.TextColumn("Amount", width="small"),
+                "Delete?": st.column_config.CheckboxColumn("Delete?", default=False, width="small"),
             },
             height=min(38 + 35 * len(ledger), 520),
             width="stretch",
             key=f"ledger_{sig}",
         )
 
-        deleted = set(ledger.index) - set(edited.index)
-        if deleted:
-            try:
-                for tx_id in deleted:
-                    db.delete_transaction(tx_id)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Failed to delete transaction: {e}")
+        to_delete = edited.index[edited["Delete?"]].tolist()
+        if to_delete:
+            if st.button("🚨 Delete Selected Transactions"):
+                try:
+                    for tx_id in to_delete:
+                        db.delete_transaction(tx_id)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to delete: {e}")
 
         common_index = edited.index.intersection(ledger.index)
         changed = common_index[edited.loc[common_index, "Category"] != ledger.loc[common_index, "Category"]]
