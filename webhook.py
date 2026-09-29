@@ -1,6 +1,6 @@
 """Webhook that MacroDroid posts bank SMS to.
 
-Run:  COOKED_TOKEN=some-long-secret uvicorn api:app --host 0.0.0.0 --port 8000
+Run: uvicorn api:app --host 0.0.0.0 --port 8000
 """
 import hmac
 import json

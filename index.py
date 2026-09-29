@@ -9,7 +9,10 @@ from sms_parser import AMT, categorize, parse_sms
 
 TOKEN = os.environ.get("COOKED_TOKEN")
 if not TOKEN:
-    TOKEN = "fallback_token_for_dev"
+    import os
+TOKEN = os.getenv("COOKED_TOKEN")
+if not TOKEN:
+    raise RuntimeError("COOKED_TOKEN environment variable must be set.")
 
 db.init_db()
 app = FastAPI(title="Am I cooked? webhook")
