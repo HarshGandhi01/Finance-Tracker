@@ -162,6 +162,7 @@ with col_ledger:
         edited = st.data_editor(
             ledger,
             hide_index=True,
+            num_rows="dynamic",
             disabled=["Date", "Merchant", "Amount"],
             column_config={
                 "Date": st.column_config.DateColumn("Date", format="DD MMM", width="small"),
@@ -174,7 +175,17 @@ with col_ledger:
             key=f"ledger_{sig}",
         )
 
-        changed = edited.index[edited["Category"] != ledger["Category"]]
+        deleted = set(ledger.index) - set(edited.index)
+        if deleted:
+            try:
+                for tx_id in deleted:
+                    db.delete_transaction(tx_id)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to delete transaction: {e}")
+
+        common_index = edited.index.intersection(ledger.index)
+        changed = common_index[edited.loc[common_index, "Category"] != ledger.loc[common_index, "Category"]]
         if len(changed):
             if hasattr(db, "update_category"):
                 try:
