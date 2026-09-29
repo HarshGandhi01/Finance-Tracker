@@ -334,8 +334,18 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
                            and t["direction"] == "debit"
                            and not t["is_peer"])
 
+    # The daily budget is strictly the target_daily (₹350).
+    # The silo is only used as a buffer if you OVERSPEND the ₹350.
     food_silo = float(settings.get("food_silo_balance", 0.0))
-    food_remaining_today = (target_daily + food_silo) - today_food_spend
+
+    # If you've spent less than 350, you just have (350 - spent) left.
+    # You DON'T get the silo added to your daily budget.
+    # But if you spend MORE than 350, the silo helps cover it.
+    if today_food_spend <= target_daily:
+        food_remaining_today = target_daily - today_food_spend
+    else:
+        # Overspent: use target + whatever is in the silo
+        food_remaining_today = (target_daily + food_silo) - today_food_spend
 
     food_balance = safe_to_spend
     safe_per_meal = max(food_balance, 0) / max(meals_remaining, 1)
