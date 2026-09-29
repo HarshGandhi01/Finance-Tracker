@@ -418,7 +418,6 @@ else:
 
         col_tx, col_cat = st.columns([0.85, 0.15])
         with col_tx:
-        with col_tx:
             # Use a clean, secure display instead of raw HTML
             st.markdown(f"**{tx['merchant']}**  \n*{tx['category']}* • {tx_date_str}")
             st.markdown(f"**{sign}{inr(tx['amount'])}**")
@@ -440,8 +439,6 @@ else:
                         st.error(f"Failed to update category: {e}")
                 else:
                     st.error("Database update function not found. Please refresh the page.")
-
-st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- admin
 with st.expander("Settings & Maintenance"):
