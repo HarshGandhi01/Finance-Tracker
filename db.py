@@ -247,6 +247,32 @@ def delete_unparsed(uid: int):
         c.execute(text("DELETE FROM unparsed_sms WHERE id=:i"), {"i": uid})
 
 
+def update_food_silo(today: date, transactions: list, target_daily: float = 350.0):
+    \"\"\"
+    Update the food silo balance based on today's spending.
+    If spend < target, the difference is added to the silo.
+    If spend > target, the difference is subtracted from the silo.
+    \"\"\"
+    today_str = str(today)
+    today_food_spend = sum(t["amount"] for t in transactions
+                           if str(t["date"]).startswith(today_str)
+                           and t["category"] == "Food"
+                           and t["direction"] == "debit"
+                           and not t["is_peer"])
+
+    diff = target_daily - today_food_spend
+    current_silo = float(get_setting("food_silo_balance", 0.0))
+    new_silo = current_silo + diff
+
+    # We only update once per day to avoid repeated additive updates on every load.
+    # Check if we've already processed today's silo update.
+    last_update = get_setting("food_silo_last_update")
+    if last_update == today_str:
+        return
+
+    set_setting("food_silo_balance", new_silo)
+    set_setting("food_silo_last_update", today_str)
+
 def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dict:
     settings = all_settings()
     txs = get_transactions(month)
@@ -277,7 +303,9 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     reserved = sum(max(funds[n] - fund_spent[n], 0) for n in funds)
 
     rollover = float(settings.get("rollover_balance", 0.0))
-    safe_to_spend = balance + incoming - reserved
+    # FIX: Safe to spend should be based on ACTUAL balance, not balance + expected income.
+    # Expected income is not "safe" until it actually hits the account.
+    safe_to_spend = balance - reserved
 
     days_remaining = days_in_month - today.day + 1
     meals_remaining = days_remaining * 2
