@@ -214,6 +214,7 @@ with st.expander("Settings & maintenance"):
     )
     if st.button("Update balance", width="stretch"):
         db.set_balance(new_bal)
+        st.success(f"Balance updated to {inr(new_bal)}.")
         st.rerun()
 
     if st.button("Reset Food Silo to 0", width="stretch"):
