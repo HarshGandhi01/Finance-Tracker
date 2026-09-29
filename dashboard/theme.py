@@ -7,15 +7,15 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
 
-BG = "#0C0E12"
-INK = "#F2F4F8"
-MUTED = "#8F99AB"
-LINE = "#232A35"
+BG = "#0A0A0C"
+INK = "#F2F2F4"
+MUTED = "#8B8B94"
+LINE = "#232329"
 FONT_DISPLAY = "Bricolage Grotesque, IBM Plex Sans, sans-serif"
 FONT_BODY = "IBM Plex Sans, system-ui, sans-serif"
 
-# First (largest) category gets the accent; the rest cycle through distinct hues.
-SERIES = ["#7C83FF", "#3DBE8B", "#E8A93A", "#F0584F", "#4FB7E5", "#B28CFF", "#8F99AB"]
+# First (largest) category gets the accent; the rest cycle through distinct, low-saturation hues.
+SERIES = ["#7C83FF", "#3DBE8B", "#E8A93A", "#F0584F", "#4FB7E5", "#B28CFF", "#8B8B94"]
 
 pio.templates["cooked_dark"] = go.layout.Template(
     layout=go.Layout(
@@ -62,21 +62,21 @@ def spending_donut(cat_sums) -> go.Figure:
         go.Pie(
             labels=list(cat_sums.index),
             values=list(cat_sums.values),
-            hole=0.72,
+            hole=0.76,
             sort=False,
-            marker=dict(colors=SERIES[: len(cat_sums)] or SERIES, line=dict(color=BG, width=3)),
+            marker=dict(colors=SERIES[: len(cat_sums)] or SERIES, line=dict(color=BG, width=2)),
             textinfo="none",
             hovertemplate="%{label}<br>₹%{value:,.0f} (%{percent})<extra></extra>",
         )
     )
     fig.add_annotation(
-        text=f"<span style='font-size:26px;font-family:{FONT_DISPLAY};font-weight:700'>{inr(total)}</span>"
-        f"<br><span style='font-size:12px;color:{MUTED}'>spent</span>",
+        text=f"<span style='font-size:24px;font-family:{FONT_DISPLAY};font-weight:600'>{inr(total)}</span>"
+        f"<br><span style='font-size:11px;color:{MUTED}'>spent</span>",
         showarrow=False,
     )
     fig.update_layout(
-        height=320,
+        height=300,
         margin=dict(l=0, r=0, t=8, b=0),
-        legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.02, font=dict(color=MUTED)),
+        legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.03, font=dict(color=MUTED, size=11)),
     )
     return fig

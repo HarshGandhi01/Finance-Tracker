@@ -187,7 +187,7 @@ with col_ledger:
                 st.error("Database update function not found. Please refresh the page.")
 
 # ---------------------------------------------------------------- admin
-st.markdown('<div style="height:2rem"></div>', unsafe_allow_html=True)
+st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
 with st.expander("Settings & maintenance"):
     st.caption(
         f"Debug: date {today} | budget {TARGET_DAILY} | spend {m.get('today_food_spend', 0)} | "
