@@ -116,6 +116,70 @@ def opening_key(month: str) -> str:
     return f"opening_balance_{month}"
 
 
+def get_cycle_dates(month: str, as_of: date | None = None) -> tuple[date, date]:
+    """Receipt-date keys identify real cycles; YYYY-MM supports legacy budgets."""
+    if len(month) == 10:
+        as_of = as_of or today_ist()
+        start = date.fromisoformat(month)
+        with conn() as c:
+            following = _rows(c, "SELECT MIN(date) AS d FROM transactions "
+                                 "WHERE category='Pocket Money' AND direction='credit' "
+                                 "AND status='settled' AND date > :s AND date <= :today",
+                              s=month, today=str(as_of))
+        if following[0]["d"]:
+            return start, date.fromisoformat(following[0]["d"]) - timedelta(days=1)
+        y, m = (start.year + 1, 1) if start.month == 12 else (start.year, start.month + 1)
+        estimated_next = date(y, m, min(start.day, calendar.monthrange(y, m)[1]))
+        # Late pocket money does not silently start a new cycle.
+        return start, max(estimated_next - timedelta(days=1), as_of)
+    start_day = int(get_setting("budget_start_day", 1))
+    y, m = map(int, month.split("-"))
+
+    # Handle case where start_day > days in this month
+    max_days = calendar.monthrange(y, m)[1]
+    actual_start_day = min(start_day, max_days)
+    start_date = date(y, m, actual_start_day)
+
+    if m == 12:
+        next_y, next_m = y + 1, 1
+    else:
+        next_y, next_m = y, m + 1
+
+    max_days_next = calendar.monthrange(next_y, next_m)[1]
+    actual_end_day = min(start_day, max_days_next)
+    end_date = date(next_y, next_m, actual_end_day) - timedelta(days=1)
+
+    return start_date, end_date
+
+
+def get_current_cycle_month(today: date) -> str:
+    """Use the latest received pocket money, even across calendar boundaries."""
+    receipts = get_pocket_money_dates(today)
+    if receipts:
+        return receipts[0]
+    start_day = min(int(get_setting("budget_start_day", 1)),
+                    calendar.monthrange(today.year, today.month)[1])
+    if today.day < start_day:
+        if today.month == 1:
+            return f"{today.year - 1}-12"
+        return f"{today.year}-{today.month - 1:02d}"
+    return f"{today.year}-{today.month:02d}"
+
+
+def get_pocket_money_dates(today: date) -> list[str]:
+    with conn() as c:
+        rows = _rows(c, "SELECT DISTINCT date FROM transactions WHERE category='Pocket Money' "
+                        "AND direction='credit' AND status='settled' AND date <= :d ORDER BY date DESC",
+                     d=str(today))
+    return [r["date"] for r in rows]
+
+
+def get_received_credits(today: date) -> list:
+    with conn() as c:
+        return _rows(c, "SELECT * FROM transactions WHERE direction='credit' "
+                        "AND status='settled' AND date <= :d ORDER BY date DESC, id DESC", d=str(today))
+
+
 def add_transaction(date_, merchant, amount, direction="debit", category="Food",
                     is_peer=False, peer_name=None, status="settled", upi_ref=None) -> bool:
     upi_ref = (upi_ref or "").strip() or None
@@ -128,15 +192,18 @@ def add_transaction(date_, merchant, amount, direction="debit", category="Food",
                 {"d": str(date_), "m": merchant.strip(), "a": float(amount), "dir": direction,
                  "cat": category, "peer": int(is_peer), "pn": peer_name, "st": status,
                  "ref": upi_ref, "ts": _now_utc()})
+
         return True
     except IntegrityError:
         return False
 
 
-def get_transactions(month: str):
+def get_transactions(month: str, as_of: date | None = None):
+    start_date, end_date = get_cycle_dates(month, as_of)
     with conn() as c:
-        return _rows(c, "SELECT * FROM transactions WHERE substr(date,1,7)=:m "
-                        "ORDER by date DESC, id DESC", m=month)
+        return _rows(c, "SELECT * FROM transactions WHERE date >= :s AND date <= :e "
+                        "ORDER by date DESC, id DESC",
+                        s=str(start_date), e=str(end_date))
 
 
 def delete_transaction(tx_id: int):
@@ -183,11 +250,26 @@ def set_food_silo_zero():
     set_setting("food_silo_last_update", str(today_ist()))
 
 
-def current_balance(month: str, month_txs: list, settings: dict | None = None):
+def current_balance(month: str, month_txs: list, settings: dict | None = None,
+                    as_of: date | None = None):
     s = settings if settings is not None else all_settings()
     anchor = s.get("anchor_balance")
     if anchor is None:
         opening = s.get(opening_key(month))
+        if opening is None and len(month) == 10:
+            # Existing calendar-month opening balances still seed the cash ledger.
+            keys = sorted(k for k in s if k.startswith("opening_balance_")
+                          and len(k.removeprefix("opening_balance_")) == 7
+                          and k.removeprefix("opening_balance_") <= month[:7])
+            if keys:
+                key = keys[-1]
+                with conn() as c:
+                    net = _rows(c, "SELECT COALESCE(SUM(CASE WHEN direction='credit' THEN amount "
+                                   "ELSE -amount END),0) AS n FROM transactions "
+                                   "WHERE date >= :s AND date <= :e",
+                                s=key.removeprefix("opening_balance_") + "-01",
+                                e=str(as_of or today_ist()))[0]["n"]
+                return float(s[key]) + float(net)
         if opening is None:
             return None
         return float(opening) + sum(t["amount"] if t["direction"] == "credit" else -t["amount"]
@@ -205,10 +287,9 @@ def add_expected(date_, label, amount):
 
 
 def get_expected(month: str) -> list:
-    y, m_ = map(int, month.split("-"))
-    end = f"{month}-{calendar.monthrange(y, m_)[1]:02d}"
+    _, end_date = get_cycle_dates(month)
     with conn() as c:
-        return _rows(c, "SELECT * FROM expected_income WHERE date<=:e ORDER BY date", e=end)
+        return _rows(c, "SELECT * FROM expected_income WHERE date<=:e ORDER BY date", e=str(end_date))
 
 
 def delete_expected(exp_id: int):
@@ -256,60 +337,67 @@ def update_food_silo(today: date, transactions: list, target_daily: float = 350.
     """
     today_str = str(today)
     last_update_str = get_setting("food_silo_last_update")
-    
+
     if last_update_str == today_str:
         return
-        
+
     current_silo = float(get_setting("food_silo_balance", 0.0))
-    
+
     if not last_update_str:
-        # If never initialized, start tracking from today without retroactively adding
         set_setting("food_silo_last_update", today_str)
         return
-        
+
     try:
         last_update_date = datetime.strptime(last_update_str, "%Y-%m-%d").date()
     except ValueError:
         set_setting("food_silo_last_update", today_str)
         return
 
-    # Process all missing days up to yesterday
     current_date = last_update_date
     while current_date < today:
         current_date_str = str(current_date)
-        
-        # Calculate spend for the current missed day using the DB
         with conn() as c:
             spend_rows = _rows(c, "SELECT SUM(amount) as s FROM transactions "
                                   "WHERE date=:d AND category='Food' "
-                                  "AND direction='debit' AND is_peer=0", 
+                                  "AND direction='debit' AND is_peer=0",
                                   d=current_date_str)
         day_spend = float(spend_rows[0]["s"] or 0.0)
-        
         current_silo += (target_daily - day_spend)
         current_date += timedelta(days=1)
-        
+
     set_setting("food_silo_balance", current_silo)
     set_setting("food_silo_last_update", today_str)
 
 
 def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dict:
     settings = all_settings()
-    txs = get_transactions(month)
+    txs = get_transactions(month, today)
     funds = get_funds()
+
+    start_date, end_date = get_cycle_dates(month, today)
+    days_in_cycle = (end_date - start_date).days + 1
+
+    elapsed_days = (today - start_date).days
+    if elapsed_days < 0:
+        elapsed_days = 0
+    elif elapsed_days > days_in_cycle:
+        elapsed_days = days_in_cycle
+
+    elapsed_frac = elapsed_days / max(days_in_cycle, 1)
+
+    # Future-dated entries cannot contribute to spending already incurred.
+    txs = [t for t in txs if t["date"] <= str(today)]
 
     debits = sum(t["amount"] for t in txs if t["direction"] == "debit")
     peer_debits = sum(t["amount"] for t in txs if t["direction"] == "debit" and t["is_peer"])
     burn = debits - peer_debits
 
-    balance = current_balance(month, txs, settings)
+    balance = current_balance(month, txs, settings, today)
     has_balance = balance is not None
     balance = balance or 0.0
     expected = get_expected(month)
     incoming = sum(e["amount"] for e in expected)
 
-    days_in_month = calendar.monthrange(today.year, today.month)[1]
-    elapsed_frac = (today.day - 1) / days_in_month
     fund_prior = {}
     for name, alloc in funds.items():
         v = settings.get(f"fund_prior_{month}_{name}")
@@ -323,18 +411,17 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     reserved = sum(max(funds[n] - fund_spent[n], 0) for n in funds)
 
     rollover = float(settings.get("rollover_balance", 0.0))
-    # Fix: Safe to spend based on actual balance only
     safe_to_spend = balance - reserved
 
-    days_remaining = days_in_month - today.day + 1
+    days_remaining = days_in_cycle - elapsed_days
+    if days_remaining <= 0:
+        days_remaining = 1
+
     meals_remaining = days_remaining * 2
 
-    # Spendable money only: balance minus what's reserved for sinking funds,
-    # no expected/incoming income counted.
-    daily_allowance = (safe_to_spend + rollover) / max(days_remaining, 1)
+    daily_allowance = (safe_to_spend + rollover) / days_remaining
     fun_money = daily_allowance - target_daily
 
-    # --- Food-Silo Logic ---
     today_str = str(today)
     today_food_spend = sum(t["amount"] for t in txs
                            if str(t["date"]).startswith(today_str)
@@ -342,28 +429,25 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
                            and t["direction"] == "debit"
                            and not t["is_peer"])
 
-    # The daily budget is strictly the target_daily (₹350).
-    # The silo is only used as a buffer if you OVERSPEND the ₹350.
     food_silo = float(settings.get("food_silo_balance", 0.0))
 
-    # If you've spent less than 350, you just have (350 - spent) left.
-    # You DON'T get the silo added to your daily budget.
-    # But if you spend MORE than 350, the silo helps cover it.
     if today_food_spend <= target_daily:
         food_remaining_today = target_daily - today_food_spend
     else:
-        # Overspent: use target + whatever is in the silo
         food_remaining_today = (target_daily + food_silo) - today_food_spend
 
     food_balance = safe_to_spend
     safe_per_meal = max(food_balance, 0) / max(meals_remaining, 1)
-    daily_avg = burn / max(today.day, 1)
+
+    # +1 because if today is the first day, elapsed is 0, but we want to divide by 1 day
+    daily_avg = burn / max(min(elapsed_days + 1, days_in_cycle), 1)
 
     return dict(
         has_balance=has_balance, incoming=incoming, expected=expected, balance=balance,
         burn=burn, gross=debits, peer=peer_debits, fund_prior=fund_prior, reserved=reserved,
         food_balance=food_balance, funds=funds, fund_spent=fund_spent,
-        days_remaining=days_remaining, meals_remaining=meals_remaining,
+        days_remaining=days_remaining, meals_remaining=meals_remaining, days_in_cycle=days_in_cycle,
+        cycle_start=start_date, cycle_end=end_date,
         safe_per_meal=safe_per_meal, daily_avg=daily_avg, target_daily=target_daily, txs=txs,
         safe_to_spend=safe_to_spend, daily_allowance=daily_allowance, fun_money=fun_money, rollover=rollover,
         today_food_spend=today_food_spend, food_rollover=food_silo, food_remaining_today=food_remaining_today

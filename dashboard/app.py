@@ -9,9 +9,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
 import pandas as pd
 import streamlit as st
 
-import importlib
 import db
-importlib.reload(db)
 from theme import apply_theme, inr, spending_donut, burn_rate_line
 
 TARGET_DAILY = 350.0
@@ -31,7 +29,7 @@ def _shift_month(d: date, delta: int) -> str:
     idx = d.year * 12 + (d.month - 1) + delta
     return f"{idx // 12}-{idx % 12 + 1:02d}"
 
-month_now = _shift_month(today, 0)
+month_now = db.get_current_cycle_month(today)
 try:
     db.update_food_silo(today, db.get_transactions(month_now), TARGET_DAILY)
 except AttributeError:
@@ -39,16 +37,46 @@ except AttributeError:
     # might be out of sync with the app.py during a push.
     pass
 
-month_options = [_shift_month(today, -1), _shift_month(today, 0), _shift_month(today, 1)]
+receipt_dates = db.get_pocket_money_dates(today)
+month_options = receipt_dates or [month_now]
 
 col_nav1, col_nav2 = st.columns([3, 1], vertical_alignment="center")
 with col_nav1:
     st.markdown('<div class="nav-title">Am I cooked?</div>', unsafe_allow_html=True)
 with col_nav2:
-    month = st.selectbox("Budget month", options=month_options, index=1, label_visibility="collapsed")
+    month = st.selectbox("Budget cycle", options=month_options, index=0,
+                         format_func=lambda key: f"From {key}" if len(key) == 10 else key,
+                         label_visibility="collapsed")
+
+with st.expander("Pocket-money cycle", expanded=not receipt_dates):
+    st.caption("Your cycle starts on the date of a received credit marked Pocket Money. "
+               "Mark the existing ₹12,000 payment below. Other credits do not reset your cycle.")
+    credits = db.get_received_credits(today)
+    if credits:
+        credits_by_id = {t["id"]: t for t in credits}
+        credit_id = st.selectbox(
+            "Received payment", options=list(credits_by_id),
+            format_func=lambda key: (
+                f"{credits_by_id[key]['date']} · {credits_by_id[key]['merchant']} · "
+                f"{inr(credits_by_id[key]['amount'])} · {credits_by_id[key]['category']}"
+            ),
+        )
+        if st.button("Mark as pocket money", width="stretch"):
+            db.update_category(credit_id, "Pocket Money")
+            st.rerun()
+    else:
+        st.info("Add the received payment below as a credit with category Pocket Money and its receipt date.")
+    if not receipt_dates:
+        st.info("No pocket-money receipt marked yet. Showing the existing monthly budget until you select one.")
 
 # ---------------------------------------------------------------- data
 m = db.compute_metrics(month, today, TARGET_DAILY)
+st.caption(f"Cycle started {m['cycle_start']:%d %b %Y} · "
+           f"{'Estimated through' if month == month_now and receipt_dates else 'Through'} "
+           f"{m['cycle_end']:%d %b %Y} · {m['days_remaining']} days remaining")
+if receipt_dates and month == month_now:
+    st.caption("Allowance assumes the next payment arrives one month after the last. "
+               "The cycle resets only when the next received payment is marked Pocket Money.")
 
 daily_avg = m.get("daily_avg", 0.0)
 balance = m.get("balance", 0.0)
@@ -119,25 +147,25 @@ tiles_html = "".join(
     f'<div class="tile-value">{value}</div></div>'
     for label, value, lead in tiles
 )
-st.markdown(f'<div class="section-title">This month</div><div class="tiles">{tiles_html}</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="section-title">This cycle</div><div class="tiles">{tiles_html}</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- breakdown charts
 txs = m["txs"]
 st.markdown('<div class="section-title">Where it went</div>', unsafe_allow_html=True)
 
 if not txs:
-    st.info("No spending data to analyze this month.")
+    st.info("No spending data to analyze this cycle.")
 else:
     df_tx = pd.DataFrame(txs)
     debits = df_tx[df_tx["direction"] == "debit"]
-    
+
     col_c1, col_c2, col_c3 = st.columns(3, gap="large")
-    
+
     with col_c1:
         if not debits.empty:
             cat_sums = debits.groupby("category")["amount"].sum().sort_values(ascending=False)
             st.plotly_chart(spending_donut(cat_sums, "spent"), width="stretch", config={"displayModeBar": False})
-    
+
     with col_c2:
         if not debits.empty:
             merch_sums = debits.groupby("merchant")["amount"].sum().sort_values(ascending=False).head(5)
@@ -147,16 +175,18 @@ else:
                 if other_sum > 0:
                     merch_sums["Other Merchants"] = other_sum
             st.plotly_chart(spending_donut(merch_sums, "top vendors"), width="stretch", config={"displayModeBar": False})
-            
+
     with col_c3:
         if not debits.empty:
-            st.plotly_chart(burn_rate_line(debits, TARGET_DAILY, m["days_remaining"]), width="stretch", config={"displayModeBar": False})
+            st.plotly_chart(burn_rate_line(debits[debits["is_peer"] == 0], TARGET_DAILY,
+                                          m["cycle_start"], m["cycle_end"], today),
+                           width="stretch", config={"displayModeBar": False})
 
 # ---------------------------------------------------------------- ledger
 st.markdown('<div class="section-title">Transactions</div>', unsafe_allow_html=True)
 
 if not txs:
-    st.info("No entries this month.")
+    st.info("No entries this cycle.")
 else:
     sorted_txs = sorted(txs, key=lambda x: x["date"], reverse=True)
     cat_options = list(db.CATEGORIES) + sorted({t["category"] for t in sorted_txs if t["category"] not in db.CATEGORIES})
@@ -209,13 +239,14 @@ with st.expander("Settings & maintenance"):
     )
 
     with st.popover("Add manual transaction", width="stretch"):
+        m_date = st.date_input("Transaction date", value=today, max_value=today)
         m_merchant = st.text_input("Merchant", placeholder="e.g. Hungry")
         m_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
         m_cat = st.selectbox("Category", options=db.CATEGORIES)
         m_dir = st.selectbox("Direction", options=["debit", "credit"])
         if st.button("Log transaction", width="stretch"):
             if m_merchant and m_amount > 0:
-                db.add_transaction(today, m_merchant, m_amount, direction=m_dir, category=m_cat)
+                db.add_transaction(m_date, m_merchant, m_amount, direction=m_dir, category=m_cat)
                 st.success(f"Logged {m_dir}: {m_merchant}")
                 st.rerun()
             else:

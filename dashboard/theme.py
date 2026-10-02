@@ -1,7 +1,6 @@
 """Presentation helpers for Am I Cooked? No DB or business logic here."""
 from __future__ import annotations
 
-import calendar
 from pathlib import Path
 
 import pandas as pd
@@ -84,46 +83,37 @@ def spending_donut(cat_sums, inner_label="spent") -> go.Figure:
     return fig
 
 
-def burn_rate_line(txs, target_daily, days_in_month) -> go.Figure:
-    """Line chart showing cumulative spend vs target rate over the month."""
+def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today) -> go.Figure:
+    """Cumulative spending and food target starting on the receipt date."""
     if txs.empty:
         return go.Figure()
 
     # Group by date and calculate cumulative sum
-    daily_spend = txs.groupby('date')['amount'].sum().reset_index()
-    daily_spend['date'] = pd.to_datetime(daily_spend['date'])
-    daily_spend = daily_spend.sort_values('date')
+    amounts = txs.assign(date=pd.to_datetime(txs['date'])).groupby('date')['amount'].sum()
+    dates = pd.date_range(cycle_start, min(today, cycle_end), freq='D')
+    daily_spend = amounts.reindex(dates, fill_value=0).rename_axis('date').reset_index()
     daily_spend['cumulative'] = daily_spend['amount'].cumsum()
 
     # Create target line data
-    target_data = []
-    current_date = daily_spend['date'].iloc[0].replace(day=1)
-    
-    # Generate points for each day up to max day of month
-    max_days = calendar.monthrange(current_date.year, current_date.month)[1]
-    
-    for i in range(1, max_days + 1):
-        target_data.append({
-            'date': current_date.replace(day=i),
-            'target': i * target_daily
-        })
-    target_df = pd.DataFrame(target_data)
+    target_dates = pd.date_range(cycle_start, cycle_end, freq='D')
+    target_df = pd.DataFrame({'date': target_dates,
+                              'target': [(i + 1) * target_daily for i in range(len(target_dates))]})
 
     fig = go.Figure()
-    
+
     # Add target line
     fig.add_trace(go.Scatter(
-        x=target_df['date'], 
+        x=target_df['date'],
         y=target_df['target'],
         mode='lines',
         name='Target',
         line=dict(color=MUTED, width=2, dash='dash'),
         hovertemplate="Target: ₹%{y:,.0f}<extra></extra>"
     ))
-    
+
     # Add actual spend line
     fig.add_trace(go.Scatter(
-        x=daily_spend['date'], 
+        x=daily_spend['date'],
         y=daily_spend['cumulative'],
         mode='lines+markers',
         name='Actual Spend',
