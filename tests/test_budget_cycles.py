@@ -2,6 +2,8 @@ import os
 import importlib
 import tempfile
 import unittest
+import sys
+import types
 from pathlib import Path
 from datetime import date
 from unittest.mock import patch
@@ -134,6 +136,23 @@ class BudgetCycleTests(unittest.TestCase):
 
 
 class DashboardTests(unittest.TestCase):
+    def test_database_loader_refreshes_changed_source_and_reuses_unchanged_source(self):
+        from dashboard.database_loader import load_database
+        name = '_finance_tracker_dashboard_db'
+        previous = sys.modules.pop(name, None)
+        try:
+            with patch('pathlib.Path.read_bytes', return_value=b'VERSION = 1'):
+                first = load_database()
+                self.assertIs(load_database(), first)
+            with patch('pathlib.Path.read_bytes', return_value=b'VERSION = 2'):
+                second = load_database()
+                self.assertIsNot(second, first)
+                self.assertEqual(second.VERSION, 2)
+        finally:
+            sys.modules.pop(name, None)
+            if previous is not None:
+                sys.modules[name] = previous
+
     def test_mark_existing_credit_and_reopen_active_cycle(self):
         from streamlit.testing.v1 import AppTest
         with tempfile.TemporaryDirectory() as directory:
@@ -145,7 +164,13 @@ class DashboardTests(unittest.TestCase):
                                    direction='credit', category='Other')
                 db.set_balance(12000)
                 script = Path(__file__).resolve().parents[1] / 'dashboard' / 'app.py'
-                app = AppTest.from_file(str(script), default_timeout=30).run()
+                # A cached older/unrelated db module must not break the dashboard.
+                original_db = sys.modules['db']
+                sys.modules['db'] = types.ModuleType('db')
+                try:
+                    app = AppTest.from_file(str(script), default_timeout=30).run()
+                finally:
+                    sys.modules['db'] = original_db
                 self.assertEqual(list(app.exception), [])
                 button = next(b for b in app.button if b.label == 'Mark as pocket money')
                 button.click().run()
@@ -154,6 +179,9 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(cycle.value, str(today))
                 self.assertEqual(db.get_pocket_money_dates(today), [str(today)])
                 db.ENGINE.dispose()
+                cached = sys.modules.pop('_finance_tracker_dashboard_db', None)
+                if cached is not None:
+                    cached.ENGINE.dispose()
         importlib.reload(db)
 
 

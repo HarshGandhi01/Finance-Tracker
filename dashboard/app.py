@@ -9,8 +9,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
 import pandas as pd
 import streamlit as st
 
-import db
+from database_loader import load_database
 from theme import apply_theme, inr, spending_donut, burn_rate_line
+
+db = load_database()
 
 TARGET_DAILY = 350.0
 

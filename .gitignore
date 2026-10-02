@@ -9,6 +9,7 @@
 # --- SECRETS & KEYS ---
 # Environment variables and secret keys
 .env
+env
 .env.local
 .env.*.local
 secrets.py
