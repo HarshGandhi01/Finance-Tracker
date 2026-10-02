@@ -1,8 +1,10 @@
 """Presentation helpers for Am I Cooked? No DB or business logic here."""
 from __future__ import annotations
 
+import calendar
 from pathlib import Path
 
+import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
@@ -98,7 +100,6 @@ def burn_rate_line(txs, target_daily, days_in_month) -> go.Figure:
     current_date = daily_spend['date'].iloc[0].replace(day=1)
     
     # Generate points for each day up to max day of month
-    import calendar
     max_days = calendar.monthrange(current_date.year, current_date.month)[1]
     
     for i in range(1, max_days + 1):
