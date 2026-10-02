@@ -9,8 +9,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
 import pandas as pd
 import streamlit as st
 
+import importlib
 import db
-from theme import apply_theme, inr, spending_donut
+importlib.reload(db)
+from theme import apply_theme, inr, spending_donut, burn_rate_line
 
 TARGET_DAILY = 350.0
 
@@ -148,11 +150,7 @@ else:
             
     with col_c3:
         if not debits.empty:
-            food_sum = debits[debits["category"] == "Food"]["amount"].sum()
-            other_sum = debits[debits["category"] != "Food"]["amount"].sum()
-            vs_sums = pd.Series({"Food": food_sum, "Other": other_sum})
-            vs_sums = vs_sums[vs_sums > 0].sort_values(ascending=False)
-            st.plotly_chart(spending_donut(vs_sums, "food vs other"), width="stretch", config={"displayModeBar": False})
+            st.plotly_chart(burn_rate_line(debits, TARGET_DAILY, m["days_remaining"]), width="stretch", config={"displayModeBar": False})
 
 # ---------------------------------------------------------------- ledger
 st.markdown('<div class="section-title">Transactions</div>', unsafe_allow_html=True)

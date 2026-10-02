@@ -80,3 +80,62 @@ def spending_donut(cat_sums, inner_label="spent") -> go.Figure:
         legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.03, font=dict(color=MUTED, size=11)),
     )
     return fig
+
+
+def burn_rate_line(txs, target_daily, days_in_month) -> go.Figure:
+    """Line chart showing cumulative spend vs target rate over the month."""
+    if txs.empty:
+        return go.Figure()
+
+    # Group by date and calculate cumulative sum
+    daily_spend = txs.groupby('date')['amount'].sum().reset_index()
+    daily_spend['date'] = pd.to_datetime(daily_spend['date'])
+    daily_spend = daily_spend.sort_values('date')
+    daily_spend['cumulative'] = daily_spend['amount'].cumsum()
+
+    # Create target line data
+    target_data = []
+    current_date = daily_spend['date'].iloc[0].replace(day=1)
+    
+    # Generate points for each day up to max day of month
+    import calendar
+    max_days = calendar.monthrange(current_date.year, current_date.month)[1]
+    
+    for i in range(1, max_days + 1):
+        target_data.append({
+            'date': current_date.replace(day=i),
+            'target': i * target_daily
+        })
+    target_df = pd.DataFrame(target_data)
+
+    fig = go.Figure()
+    
+    # Add target line
+    fig.add_trace(go.Scatter(
+        x=target_df['date'], 
+        y=target_df['target'],
+        mode='lines',
+        name='Target',
+        line=dict(color=MUTED, width=2, dash='dash'),
+        hovertemplate="Target: ₹%{y:,.0f}<extra></extra>"
+    ))
+    
+    # Add actual spend line
+    fig.add_trace(go.Scatter(
+        x=daily_spend['date'], 
+        y=daily_spend['cumulative'],
+        mode='lines+markers',
+        name='Actual Spend',
+        line=dict(color=SERIES[0], width=3),
+        marker=dict(size=6, color=SERIES[0]),
+        hovertemplate="Spend: ₹%{y:,.0f}<extra></extra>"
+    ))
+
+    fig.update_layout(
+        height=300,
+        margin=dict(l=0, r=0, t=20, b=0),
+        legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.1, font=dict(color=MUTED, size=11)),
+        xaxis=dict(showgrid=False, showline=False, zeroline=False),
+        yaxis=dict(showgrid=True, gridcolor=LINE, showline=False, zeroline=False, tickformat=",d", tickprefix="₹")
+    )
+    return fig
