@@ -91,6 +91,43 @@ class BudgetCycleTests(unittest.TestCase):
         self.assertEqual(m['daily_avg'], 10)
         self.assertEqual(m['days_until_broke'], 1192)
 
+    def test_received_money_offsets_burn_without_double_counting_balance(self):
+        self.receipt('2026-10-01')
+        db.add_transaction('2026-10-01', 'Spending', 1782)
+        db.set_balance(7000)
+        db.add_transaction('2026-10-02', 'Repayment', 1000, direction='credit', category='Other')
+        m = db.compute_metrics('2026-10-01', date(2026, 10, 2))
+        self.assertEqual(m['received_offsets'], 1000)
+        self.assertEqual(m['burn'], 782)
+        self.assertEqual(m['daily_avg'], 391)
+        self.assertEqual(m['balance'], 8000)
+        self.assertAlmostEqual(m['daily_allowance'], 8000 / 30)
+        self.assertAlmostEqual(m['days_until_broke'], 8000 / 391)
+        db.add_transaction('2026-10-02', 'Refund', 782, direction='credit', category='Other')
+        self.assertIsNone(db.compute_metrics('2026-10-01', date(2026, 10, 2))['days_until_broke'])
+        db.add_transaction('2026-10-02', 'Income', 200, direction='credit', category='Other')
+        m = db.compute_metrics('2026-10-01', date(2026, 10, 2))
+        self.assertEqual(m['daily_avg'], -100)
+        self.assertIsNone(m['days_until_broke'])
+
+    def test_unreceived_credits_do_not_offset_burn(self):
+        self.receipt('2026-10-01')
+        db.add_transaction('2026-10-01', 'Spending', 200)
+        db.add_transaction('2026-10-02', 'Pending', 100, direction='credit', status='pending')
+        db.add_transaction('2026-10-03', 'Future', 100, direction='credit')
+        db.add_expected('2026-10-05', 'Expected', 100)
+        self.assertEqual(db.compute_metrics('2026-10-01', date(2026, 10, 2))['daily_avg'], 100)
+
+    def test_chart_offsets_received_credits(self):
+        import pandas as pd
+        from dashboard.theme import burn_rate_line
+        self.receipt('2026-10-01')
+        db.add_transaction('2026-10-01', 'Spending', 1782)
+        db.add_transaction('2026-10-02', 'Repayment', 1000, direction='credit')
+        txs = pd.DataFrame(db.get_transactions('2026-10-01'))
+        fig = burn_rate_line(txs, 350, date(2026, 10, 1), date(2026, 10, 31), date(2026, 10, 2))
+        self.assertEqual(list(fig.data[1].y), [1782, 782])
+
     def test_late_receipt_does_not_reset_cycle(self):
         self.receipt('2026-08-25')
         self.assertEqual(db.get_current_cycle_month(date(2026, 10, 2)), '2026-08-25')

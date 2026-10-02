@@ -390,7 +390,11 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
 
     debits = sum(t["amount"] for t in txs if t["direction"] == "debit")
     peer_debits = sum(t["amount"] for t in txs if t["direction"] == "debit" and t["is_peer"])
-    burn = debits
+    received = sum(t['amount'] for t in txs
+                   if t['direction'] == 'credit' and t['status'] == 'settled'
+                   and t['category'] != 'Pocket Money')
+    # Pocket money funds the cycle; other received money offsets cash spent.
+    burn = debits - received
 
     balance = current_balance(month, txs, settings, today)
     has_balance = balance is not None
@@ -448,6 +452,7 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     return dict(
         has_balance=has_balance, incoming=incoming, expected=expected, balance=balance,
         burn=burn, gross=debits, peer=peer_debits, fund_prior=fund_prior, reserved=reserved,
+        received_offsets=received,
         food_balance=food_balance, funds=funds, fund_spent=fund_spent,
         days_remaining=days_remaining, meals_remaining=meals_remaining, days_in_cycle=days_in_cycle,
         cycle_start=start_date, cycle_end=end_date,

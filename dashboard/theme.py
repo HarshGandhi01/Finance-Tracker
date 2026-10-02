@@ -89,6 +89,12 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today) -> go.Figur
         return go.Figure()
 
     # Group by date and calculate cumulative sum
+    txs = txs.copy()
+    if 'direction' in txs:
+        credits = txs['direction'] == 'credit'
+        offsets = credits & (txs['category'] != 'Pocket Money') & (txs['status'] == 'settled')
+        txs.loc[credits & ~offsets, 'amount'] = 0
+        txs.loc[offsets, 'amount'] = -txs.loc[offsets, 'amount']
     amounts = txs.assign(date=pd.to_datetime(txs['date'])).groupby('date')['amount'].sum()
     dates = pd.date_range(cycle_start, min(today, cycle_end), freq='D')
     daily_spend = amounts.reindex(dates, fill_value=0).rename_axis('date').reset_index()
@@ -116,10 +122,10 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today) -> go.Figur
         x=daily_spend['date'],
         y=daily_spend['cumulative'],
         mode='lines+markers',
-        name='Actual Spend',
+        name='Net Spend',
         line=dict(color=SERIES[0], width=3),
         marker=dict(size=6, color=SERIES[0]),
-        hovertemplate="Spend: ₹%{y:,.0f}<extra></extra>"
+        hovertemplate="Net spend: ₹%{y:,.0f}<extra></extra>"
     ))
 
     fig.update_layout(

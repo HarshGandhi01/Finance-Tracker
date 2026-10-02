@@ -85,6 +85,8 @@ balance = m.get("balance", 0.0)
 safe_to_spend = m.get("safe_to_spend", balance)
 days_left = m['days_until_broke']
 days_left_label = str(int(days_left)) if days_left is not None else '—'
+rate_description = (f"net spending {inr(daily_avg)} a day" if daily_avg >= 0
+                    else f"net gaining {inr(abs(daily_avg))} a day")
 
 try:
     food_remaining = float(m.get("food_remaining_today", 0.0))
@@ -116,7 +118,7 @@ with hero_left:
         <div class="clock">
           <div class="clock-label">Days until broke</div>
           <div class="clock-value {clock_tone}">{days_left_label}</div>
-          <div class="clock-sub">{inr(balance)} left, spending {inr(daily_avg)} a day</div>
+          <div class="clock-sub">{inr(balance)} left, {rate_description}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -158,15 +160,18 @@ with st.expander('How these numbers are calculated'):
              f"food minimum = {inr(m['fun_money'], 2)}.")
     st.write(f"Safe per meal: {inr(m['daily_allowance'], 2)} ÷ 2 meals = "
              f"{inr(m['safe_per_meal'], 2)} per meal.")
-    st.write(f"Current burn rate: {inr(m['burn'], 2)} total spending this cycle ÷ "
+    st.write(f"Current burn rate: ({inr(m['gross'], 2)} debits − "
+             f"{inr(m['received_offsets'], 2)} received credits) ÷ "
              f"{m['days_elapsed']} elapsed days = {inr(daily_avg, 2)} per day.")
     st.caption('Day counts include today and days with no spending. Your month starts when pocket money arrives. '
-               'Credits are income, so they are not counted as spending. Carried-over cash is already in your balance.')
+               'Received credits offset spending, except Pocket Money, which funds the cycle. '
+               'A negative burn rate means more money came in than went out, excluding pocket money. '
+               'Income and carried-over cash are already included in your current balance.')
     st.write(f"Safe to spend is a separate figure: {inr(balance, 2)} balance − "
              f"{inr(m['reserved'], 2)} reserved funds = {inr(safe_to_spend, 2)}. "
              "Daily allowance uses the full current balance, as requested.")
     if days_left is None:
-        st.caption('Days until broke is unavailable until spending is recorded in this cycle.')
+        st.caption('No depletion estimate: net spending is zero or negative this cycle.')
 
 # ---------------------------------------------------------------- breakdown charts
 txs = m["txs"]
@@ -196,8 +201,8 @@ else:
             st.plotly_chart(spending_donut(merch_sums, "top vendors"), width="stretch", config={"displayModeBar": False})
 
     with col_c3:
-        if not debits.empty:
-            st.plotly_chart(burn_rate_line(debits, TARGET_DAILY,
+        if not df_tx.empty:
+            st.plotly_chart(burn_rate_line(df_tx, TARGET_DAILY,
                                           m["cycle_start"], m["cycle_end"], today),
                            width="stretch", config={"displayModeBar": False})
 
