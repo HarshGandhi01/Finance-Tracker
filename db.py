@@ -390,7 +390,7 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
 
     debits = sum(t["amount"] for t in txs if t["direction"] == "debit")
     peer_debits = sum(t["amount"] for t in txs if t["direction"] == "debit" and t["is_peer"])
-    burn = debits - peer_debits
+    burn = debits
 
     balance = current_balance(month, txs, settings, today)
     has_balance = balance is not None
@@ -419,7 +419,8 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
 
     meals_remaining = days_remaining * 2
 
-    daily_allowance = (safe_to_spend + rollover) / days_remaining
+    # The current cash balance already includes money carried over from earlier cycles.
+    daily_allowance = balance / days_remaining
     fun_money = daily_allowance - target_daily
 
     today_str = str(today)
@@ -436,11 +437,13 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     else:
         food_remaining_today = (target_daily + food_silo) - today_food_spend
 
-    food_balance = safe_to_spend
-    safe_per_meal = max(food_balance, 0) / max(meals_remaining, 1)
+    food_balance = balance
+    safe_per_meal = daily_allowance / 2
 
     # +1 because if today is the first day, elapsed is 0, but we want to divide by 1 day
-    daily_avg = burn / max(min(elapsed_days + 1, days_in_cycle), 1)
+    days_elapsed = max(min(elapsed_days + 1, days_in_cycle), 1)
+    daily_avg = burn / days_elapsed
+    days_until_broke = max(balance, 0) / daily_avg if daily_avg > 0 else None
 
     return dict(
         has_balance=has_balance, incoming=incoming, expected=expected, balance=balance,
@@ -448,6 +451,7 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
         food_balance=food_balance, funds=funds, fund_spent=fund_spent,
         days_remaining=days_remaining, meals_remaining=meals_remaining, days_in_cycle=days_in_cycle,
         cycle_start=start_date, cycle_end=end_date,
+        days_elapsed=days_elapsed, days_until_broke=days_until_broke,
         safe_per_meal=safe_per_meal, daily_avg=daily_avg, target_daily=target_daily, txs=txs,
         safe_to_spend=safe_to_spend, daily_allowance=daily_allowance, fun_money=fun_money, rollover=rollover,
         today_food_spend=today_food_spend, food_rollover=food_silo, food_remaining_today=food_remaining_today

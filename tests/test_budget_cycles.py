@@ -50,7 +50,7 @@ class BudgetCycleTests(unittest.TestCase):
         self.assertEqual(m['daily_avg'], 250)  # Eight days, including today.
         self.assertEqual(m['days_remaining'], 23)
         self.assertEqual(m['balance'], 7355)
-        self.assertAlmostEqual(m['daily_allowance'], m['safe_to_spend'] / 23)
+        self.assertAlmostEqual(m['daily_allowance'], m['balance'] / 23)
         self.assertAlmostEqual(m['fun_money'], m['daily_allowance'] - 350)
 
     def test_next_receipt_closes_previous_cycle_without_overlap(self):
@@ -63,6 +63,33 @@ class BudgetCycleTests(unittest.TestCase):
         m = db.compute_metrics('2026-10-02', date(2026, 10, 2))
         self.assertEqual(m['daily_avg'], 300)
         self.assertEqual(m['days_remaining'], 31)
+
+    def test_requested_formulas_use_cash_without_adding_rollover(self):
+        self.receipt('2026-10-01')
+        db.add_transaction('2026-10-01', 'Food', 1600)
+        db.add_transaction('2026-10-02', 'Peer payment', 182, is_peer=True)
+        db.set_balance(7355)
+        db.set_setting('rollover_balance', 725)
+        m = db.compute_metrics('2026-10-01', date(2026, 10, 2))
+        self.assertEqual(m['days_remaining'], 30)
+        self.assertEqual(m['days_elapsed'], 2)
+        self.assertAlmostEqual(m['daily_allowance'], 7355 / 30)
+        self.assertAlmostEqual(m['fun_money'], 7355 / 30 - 350)
+        self.assertAlmostEqual(m['safe_per_meal'], 7355 / 60)
+        self.assertEqual(m['daily_avg'], 891)
+        self.assertAlmostEqual(m['days_until_broke'], 7355 / 891)
+        self.assertLess(m['safe_to_spend'], m['balance'])
+
+    def test_burn_rate_includes_zero_spend_days_and_has_no_food_minimum_floor(self):
+        self.receipt('2026-09-25')
+        db.set_balance(12000)
+        m = db.compute_metrics('2026-09-25', date(2026, 10, 2))
+        self.assertEqual(m['daily_avg'], 0)
+        self.assertIsNone(m['days_until_broke'])
+        db.add_transaction('2026-10-02', 'Food', 80)
+        m = db.compute_metrics('2026-09-25', date(2026, 10, 2))
+        self.assertEqual(m['daily_avg'], 10)
+        self.assertEqual(m['days_until_broke'], 1192)
 
     def test_late_receipt_does_not_reset_cycle(self):
         self.receipt('2026-08-25')

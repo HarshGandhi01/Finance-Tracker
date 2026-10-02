@@ -83,8 +83,8 @@ if receipt_dates and month == month_now:
 daily_avg = m.get("daily_avg", 0.0)
 balance = m.get("balance", 0.0)
 safe_to_spend = m.get("safe_to_spend", balance)
-divisor = max(daily_avg, TARGET_DAILY)
-days_left = safe_to_spend / divisor if divisor > 0 else 999
+days_left = m['days_until_broke']
+days_left_label = str(int(days_left)) if days_left is not None else '—'
 
 try:
     food_remaining = float(m.get("food_remaining_today", 0.0))
@@ -104,7 +104,8 @@ elif food_remaining == 0:
 else:
     status_text = f"Overspent on food by {inr(abs(food_remaining))}. You're officially cooked."
 
-clock_tone = "hot" if days_left <= 7 else ("warn" if days_left <= 14 else "")
+clock_tone = "hot" if days_left is not None and days_left <= 7 else (
+    "warn" if days_left is not None and days_left <= 14 else "")
 food_tone = "hot" if food_remaining < 0 else ""
 bar_pct = min(max(food_spent / TARGET_DAILY, 0), 1) * 100 if TARGET_DAILY else 0
 
@@ -114,8 +115,8 @@ with hero_left:
         f"""
         <div class="clock">
           <div class="clock-label">Days until broke</div>
-          <div class="clock-value {clock_tone}">{int(days_left)}</div>
-          <div class="clock-sub">{inr(safe_to_spend)} left, spending {inr(divisor)} a day</div>
+          <div class="clock-value {clock_tone}">{days_left_label}</div>
+          <div class="clock-sub">{inr(balance)} left, spending {inr(daily_avg)} a day</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -150,6 +151,22 @@ tiles_html = "".join(
     for label, value, lead in tiles
 )
 st.markdown(f'<div class="section-title">This cycle</div><div class="tiles">{tiles_html}</div>', unsafe_allow_html=True)
+with st.expander('How these numbers are calculated'):
+    st.write(f"Daily allowance: {inr(balance, 2)} current balance ÷ "
+             f"{m['days_remaining']} days left = {inr(m['daily_allowance'], 2)} per day.")
+    st.write(f"Extra per day: {inr(m['daily_allowance'], 2)} − {inr(TARGET_DAILY)} "
+             f"food minimum = {inr(m['fun_money'], 2)}.")
+    st.write(f"Safe per meal: {inr(m['daily_allowance'], 2)} ÷ 2 meals = "
+             f"{inr(m['safe_per_meal'], 2)} per meal.")
+    st.write(f"Current burn rate: {inr(m['burn'], 2)} total spending this cycle ÷ "
+             f"{m['days_elapsed']} elapsed days = {inr(daily_avg, 2)} per day.")
+    st.caption('Day counts include today and days with no spending. Your month starts when pocket money arrives. '
+               'Credits are income, so they are not counted as spending. Carried-over cash is already in your balance.')
+    st.write(f"Safe to spend is a separate figure: {inr(balance, 2)} balance − "
+             f"{inr(m['reserved'], 2)} reserved funds = {inr(safe_to_spend, 2)}. "
+             "Daily allowance uses the full current balance, as requested.")
+    if days_left is None:
+        st.caption('Days until broke is unavailable until spending is recorded in this cycle.')
 
 # ---------------------------------------------------------------- breakdown charts
 txs = m["txs"]
@@ -180,7 +197,7 @@ else:
 
     with col_c3:
         if not debits.empty:
-            st.plotly_chart(burn_rate_line(debits[debits["is_peer"] == 0], TARGET_DAILY,
+            st.plotly_chart(burn_rate_line(debits, TARGET_DAILY,
                                           m["cycle_start"], m["cycle_end"], today),
                            width="stretch", config={"displayModeBar": False})
 
