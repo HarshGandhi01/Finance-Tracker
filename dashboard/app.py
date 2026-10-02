@@ -16,7 +16,6 @@ TARGET_DAILY = 350.0
 
 st.set_page_config(
     page_title="Am I cooked?",
-    page_icon="🍳",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -120,39 +119,60 @@ tiles_html = "".join(
 )
 st.markdown(f'<div class="section-title">This month</div><div class="tiles">{tiles_html}</div>', unsafe_allow_html=True)
 
-# ---------------------------------------------------------------- breakdown + ledger
+# ---------------------------------------------------------------- breakdown charts
 txs = m["txs"]
-col_chart, col_ledger = st.columns([1, 1.5], gap="large")
+st.markdown('<div class="section-title">Where it went</div>', unsafe_allow_html=True)
 
-with col_chart:
-    st.markdown('<div class="section-title">Where it went</div>', unsafe_allow_html=True)
-    cat_sums = pd.Series(dtype=float)
-    if txs:
-        df_tx = pd.DataFrame(txs)
-        debits = df_tx[df_tx["direction"] == "debit"]
+if not txs:
+    st.info("No spending data to analyze this month.")
+else:
+    df_tx = pd.DataFrame(txs)
+    debits = df_tx[df_tx["direction"] == "debit"]
+    
+    col_c1, col_c2, col_c3 = st.columns(3, gap="large")
+    
+    with col_c1:
         if not debits.empty:
             cat_sums = debits.groupby("category")["amount"].sum().sort_values(ascending=False)
-    if cat_sums.empty:
-        st.info("No spending data to analyze this month.")
-    else:
-        st.plotly_chart(spending_donut(cat_sums), width="stretch", config={"displayModeBar": False})
+            st.plotly_chart(spending_donut(cat_sums, "spent"), width="stretch", config={"displayModeBar": False})
+    
+    with col_c2:
+        if not debits.empty:
+            merch_sums = debits.groupby("merchant")["amount"].sum().sort_values(ascending=False).head(5)
+            # Group the rest into "Other" if there are many
+            if len(debits["merchant"].unique()) > 5:
+                other_sum = debits["amount"].sum() - merch_sums.sum()
+                if other_sum > 0:
+                    merch_sums["Other Merchants"] = other_sum
+            st.plotly_chart(spending_donut(merch_sums, "top vendors"), width="stretch", config={"displayModeBar": False})
+            
+    with col_c3:
+        if not debits.empty:
+            food_sum = debits[debits["category"] == "Food"]["amount"].sum()
+            other_sum = debits[debits["category"] != "Food"]["amount"].sum()
+            vs_sums = pd.Series({"Food": food_sum, "Other": other_sum})
+            vs_sums = vs_sums[vs_sums > 0].sort_values(ascending=False)
+            st.plotly_chart(spending_donut(vs_sums, "food vs other"), width="stretch", config={"displayModeBar": False})
 
-with col_ledger:
-    st.markdown('<div class="section-title">Transactions</div>', unsafe_allow_html=True)
-    if not txs:
-        st.info("No entries this month.")
-    else:
-        sorted_txs = sorted(txs, key=lambda x: x["date"], reverse=True)
-        cat_options = list(db.CATEGORIES) + sorted({t["category"] for t in sorted_txs if t["category"] not in db.CATEGORIES})
+# ---------------------------------------------------------------- ledger
+st.markdown('<div class="section-title">Transactions</div>', unsafe_allow_html=True)
 
-        # Render transaction rows as styled HTML cards
-        for t in sorted_txs:
-            dt = pd.to_datetime(t["date"], errors="coerce")
-            date_str = dt.strftime("%d %b") if pd.notna(dt) else t["date"]
-            sign = "+" if t["direction"] == "credit" else "-"
-            amt_class = "tx-credit" if t["direction"] == "credit" else "tx-debit"
-            amt_str = f'{sign}{inr(t["amount"], 2)}'
+if not txs:
+    st.info("No entries this month.")
+else:
+    sorted_txs = sorted(txs, key=lambda x: x["date"], reverse=True)
+    cat_options = list(db.CATEGORIES) + sorted({t["category"] for t in sorted_txs if t["category"] not in db.CATEGORIES})
 
+    # Render transaction rows with inline edit button
+    for t in sorted_txs:
+        dt = pd.to_datetime(t["date"], errors="coerce")
+        date_str = dt.strftime("%d %b") if pd.notna(dt) else t["date"]
+        sign = "+" if t["direction"] == "credit" else "-"
+        amt_class = "tx-credit" if t["direction"] == "credit" else "tx-debit"
+        amt_str = f'{sign}{inr(t["amount"], 2)}'
+
+        col1, col2 = st.columns([10, 1], vertical_alignment="center")
+        with col1:
             st.markdown(
                 f"""
                 <div class="tx-row">
@@ -164,7 +184,8 @@ with col_ledger:
                 """,
                 unsafe_allow_html=True,
             )
-            with st.popover("✏️", key=f"edit_{t['id']}"):
+        with col2:
+            with st.popover("Edit", key=f"edit_{t['id']}", help="Edit or delete"):
                 new_cat = st.selectbox(
                     "Category", options=cat_options,
                     index=cat_options.index(t["category"]) if t["category"] in cat_options else 0,
@@ -177,7 +198,7 @@ with col_ledger:
                             db.update_category(t["id"], new_cat)
                         st.rerun()
                 with col_del:
-                    if st.button("🗑️ Delete", key=f"del_{t['id']}", use_container_width=True):
+                    if st.button("Delete", key=f"del_{t['id']}", use_container_width=True):
                         db.delete_transaction(t["id"])
                         st.rerun()
 

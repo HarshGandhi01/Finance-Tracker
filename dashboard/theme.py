@@ -55,7 +55,7 @@ def inr(x: float, decimals: int = 0) -> str:
     return "-" + out if neg else out
 
 
-def spending_donut(cat_sums) -> go.Figure:
+def spending_donut(cat_sums, inner_label="spent") -> go.Figure:
     """Donut of debit totals by category (a pandas Series, sorted descending)."""
     total = float(cat_sums.sum())
     fig = go.Figure(
@@ -71,7 +71,7 @@ def spending_donut(cat_sums) -> go.Figure:
     )
     fig.add_annotation(
         text=f"<span style='font-size:24px;font-family:{FONT_DISPLAY};font-weight:600'>{inr(total)}</span>"
-        f"<br><span style='font-size:11px;color:{MUTED}'>spent</span>",
+        f"<br><span style='font-size:11px;color:{MUTED}'>{inner_label}</span>",
         showarrow=False,
     )
     fig.update_layout(
