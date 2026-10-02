@@ -83,51 +83,51 @@ segments_html = "".join([
     for i in range(segments_total)
 ])
 
-st.markdown(
-    f"""
-    <div class="hud-header">
-        <div class="status-label" style="color: var(--mood-{mood})">{status_text}</div>
-        <div class="hero-value">{days_left_label} <span style="font-size: 1.5rem; vertical-align: middle; opacity: 0.6;">DAYS LEFT</span></div>
-        <div class="life-bar-container">{segments_html}</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+# Desktop Asymmetric Layout
+col_main, col_side = st.columns([2, 1], gap="large")
 
-# ---------------------------------------------------------------- STATS (SUBTRACTED)
-# Reduced from 6 to 3 critical numbers
-stats = [
-    ("Safe to spend", inr(safe_to_spend)),
-    ("Daily runway", inr(m["daily_allowance"])),
-    ("Safe per meal", inr(m["safe_per_meal"])),
-]
+with col_main:
+    st.markdown(
+        f"""
+        <div class="hud-header" style="text-align:left;">
+            <div class="status-label" style="color: var(--mood-{mood})">{status_text}</div>
+            <div class="hero-value">{days_left_label} <span style="font-size: 1.5rem; vertical-align: middle; opacity: 0.6;">DAYS LEFT</span></div>
+            <div class="life-bar-container">{segments_html}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-stats_html = "".join([
-    f'<div class="stat-item"><div class="stat-label">{l}</div><div class="stat-value">{v}</div></div>'
-    for l, v in stats
-])
+    # ---------------------------------------------------------------- STATS
+    stats = [
+        ("Safe to spend", inr(safe_to_spend)),
+        ("Daily runway", inr(m["daily_allowance"])),
+        ("Safe per meal", inr(m["safe_per_meal"])),
+    ]
 
-st.markdown(f'<div class="stats-grid">{stats_html}</div>', unsafe_allow_html=True)
+    stats_html = "".join([
+        f'<div class="stat-item"><div class="stat-label">{l}</div><div class="stat-value">{v}</div></div>'
+        for l, v in stats
+    ])
+    st.markdown(f'<div class="stats-grid">{stats_html}</div>', unsafe_allow_html=True)
 
-# ---------------------------------------------------------------- CHARTS (EARNED SPACE)
-txs = m["txs"]
+with col_side:
+    # Move the "The Burn" chart to the side on desktop to avoid long vertical scroll
+    if txs:
+        df_tx = pd.DataFrame(txs)
+        st.markdown('<div class="ledger-title">The Burn</div>', unsafe_allow_html=True)
+        st.plotly_chart(burn_rate_line(df_tx, TARGET_DAILY, m["cycle_start"], m["cycle_end"], today),
+                       use_container_width=True, config={"displayModeBar": False})
+
+# ---------------------------------------------------------------- CHARTS (Lower section)
 if txs:
     df_tx = pd.DataFrame(txs)
     debits = df_tx[df_tx["direction"] == "debit"]
 
-    st.markdown('<div class="ledger-title">The Burn</div>', unsafe_allow_html=True)
-
-    # Chart 1: Runway (Cumulative Spend vs Target)
-    # We keep the line chart but it's now "The Burn"
-    st.plotly_chart(burn_rate_line(df_tx, TARGET_DAILY, m["cycle_start"], m["cycle_end"], today),
-                   use_container_width=True, config={"displayModeBar": False})
-
-    # Chart 2: Top Vendors (Proportional Bars instead of Donut)
+    st.markdown('<div class="ledger-title" style="margin-top:3rem">Top Offenders</div>', unsafe_allow_html=True)
     if not debits.empty:
         merch_sums = debits.groupby("merchant")["amount"].sum().sort_values(ascending=False).head(5)
-        # Simplified proportional bars using markdown for "Anti-Slop" rule (no boxes)
         total_spent = debits["amount"].sum()
-        st.markdown('<div class="ledger-title" style="margin-top:2rem">Top Offenders</div>', unsafe_allow_html=True)
         for merchant, amount in merch_sums.items():
             pct = (amount / total_spent) * 100
             st.markdown(
