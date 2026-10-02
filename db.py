@@ -75,11 +75,7 @@ def _now_utc() -> str:
 
 
 def today_ist():
-    now = datetime.now(IST)
-    if now.day <= 2:
-        last_day_prev = now.replace(day=1) - timedelta(days=1)
-        return last_day_prev.date()
-    return now.date()
+    return datetime.now(IST).date()
 
 
 _INITED = False
@@ -285,9 +281,9 @@ def update_food_silo(today: date, transactions: list, target_daily: float = 350.
         # Calculate spend for the current missed day using the DB
         with conn() as c:
             spend_rows = _rows(c, "SELECT SUM(amount) as s FROM transactions "
-                                  "WHERE date LIKE :d AND category='Food' "
+                                  "WHERE date=:d AND category='Food' "
                                   "AND direction='debit' AND is_peer=0", 
-                                  d=current_date_str + "%")
+                                  d=current_date_str)
         day_spend = float(spend_rows[0]["s"] or 0.0)
         
         current_silo += (target_daily - day_spend)

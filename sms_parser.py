@@ -27,7 +27,9 @@ DATE_PATS = [
 
 RULES = {
     "Food": ["shindi", "campus store", "malpe", "canteen", "mess", "swiggy", "zomato", "cafe",
-             "hotel", "restaurant", "juice", "bakery", "tea", "chai", "biryani", "pizza"],
+             "hotel", "restaurant", "juice", "bakery", "tea", "chai", "biryani", "pizza",
+             "indian kitchen", "changpay", "kitchen", "food", "dhaba", "eatery", "burger",
+             "chicken", "dosa", "paratha", "thali", "meals", "tiffin", "snack"],
     "Protein": ["protein", "whey", "muscleblaze", "myprotein", "supplement"],
     "Laundry": ["laundry", "dhobi"],
     "Sports": ["turf", "sports", "cricket", "badminton", "gym"],

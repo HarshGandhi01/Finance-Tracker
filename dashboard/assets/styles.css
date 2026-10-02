@@ -143,9 +143,64 @@ hr { border-color: var(--line); }
 label, .stMarkdown p { color: var(--text); }
 [data-testid="stCaptionContainer"] { color: var(--mute-2); }
 
-/* ---------- Ledger table ---------- */
-[data-testid="stDataFrame"], [data-testid="stDataEditor"] {
-  border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden;
+/* ---------- Transaction rows ---------- */
+.tx-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.45rem;
+  transition: border-color 0.15s ease;
+}
+.tx-row:hover { border-color: var(--accent); }
+.tx-date {
+  color: var(--mute);
+  font-size: 0.8rem;
+  font-weight: 500;
+  min-width: 3.2rem;
+  font-variant-numeric: tabular-nums;
+}
+.tx-merchant {
+  flex: 1;
+  font-weight: 500;
+  font-size: 0.92rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tx-category {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  background: rgba(124, 131, 255, 0.12);
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.tx-amount {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 5rem;
+  text-align: right;
+}
+.tx-debit { color: var(--text); }
+.tx-credit { color: var(--ok); }
+
+/* Edit popover button: make it small and inline */
+.tx-row + div [data-testid="stPopover"] > button {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  min-height: unset;
+  border: none;
+  background: transparent;
 }
 
 /* ---------- Expanders ---------- */
@@ -172,4 +227,7 @@ label, .stMarkdown p { color: var(--text); }
   .food-card { padding: 1.3rem; }
   .food-value { font-size: 2.4rem; }
   .clock-value { font-size: clamp(3.5rem, 18vw, 5rem); }
+  .tx-row { flex-wrap: wrap; gap: 0.4rem; padding: 0.65rem 0.8rem; }
+  .tx-merchant { min-width: 60%; }
+  .tx-amount { min-width: unset; }
 }

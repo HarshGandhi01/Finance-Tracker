@@ -1,5 +1,4 @@
 """Am I Cooked? — dashboard (redesign: presentation only, db calls unchanged)."""
-import hashlib
 import os
 import sys
 from datetime import date
@@ -144,59 +143,43 @@ with col_ledger:
         st.info("No entries this month.")
     else:
         sorted_txs = sorted(txs, key=lambda x: x["date"], reverse=True)
-        ledger = pd.DataFrame(
-            {
-                "Date": pd.to_datetime([t["date"] for t in sorted_txs], errors="coerce"),
-                "Merchant": [str(t["merchant"]) for t in sorted_txs],
-                "Category": [t["category"] for t in sorted_txs],
-                "Amount": [
-                    f'{"+" if t["direction"] == "credit" else "-"}{inr(t["amount"], 2)}' for t in sorted_txs
-                ],
-            },
-            index=[t["id"] for t in sorted_txs],
-        )
-        ledger["Delete?"] = False
-        cat_options = list(db.CATEGORIES) + sorted({c for c in ledger["Category"] if c not in db.CATEGORIES})
+        cat_options = list(db.CATEGORIES) + sorted({t["category"] for t in sorted_txs if t["category"] not in db.CATEGORIES})
 
-        sig = hashlib.md5(repr(list(zip(ledger.index, ledger["Category"]))).encode()).hexdigest()[:10]
-        edited = st.data_editor(
-            ledger,
-            hide_index=True,
-            disabled=["Date", "Merchant", "Amount"],
-            column_config={
-                "Date": st.column_config.DateColumn("Date", format="DD MMM", width="small"),
-                "Merchant": st.column_config.TextColumn("Merchant", width="medium"),
-                "Category": st.column_config.SelectboxColumn("Category", options=cat_options, required=True, width="small"),
-                "Amount": st.column_config.TextColumn("Amount", width="small"),
-                "Delete?": st.column_config.CheckboxColumn("Delete?", default=False, width="small"),
-            },
-            height=min(38 + 35 * len(ledger), 520),
-            width="stretch",
-            key=f"ledger_{sig}",
-        )
+        # Render transaction rows as styled HTML cards
+        for t in sorted_txs:
+            dt = pd.to_datetime(t["date"], errors="coerce")
+            date_str = dt.strftime("%d %b") if pd.notna(dt) else t["date"]
+            sign = "+" if t["direction"] == "credit" else "-"
+            amt_class = "tx-credit" if t["direction"] == "credit" else "tx-debit"
+            amt_str = f'{sign}{inr(t["amount"], 2)}'
 
-        to_delete = edited.index[edited["Delete?"]].tolist()
-        if to_delete:
-            if st.button("🚨 Delete Selected Transactions"):
-                try:
-                    for tx_id in to_delete:
-                        db.delete_transaction(tx_id)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Failed to delete: {e}")
-
-        common_index = edited.index.intersection(ledger.index)
-        changed = common_index[edited.loc[common_index, "Category"] != ledger.loc[common_index, "Category"]]
-        if len(changed):
-            if hasattr(db, "update_category"):
-                try:
-                    for tx_id in changed:
-                        db.update_category(tx_id, edited.loc[tx_id, "Category"])
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Failed to update category: {e}")
-            else:
-                st.error("Database update function not found. Please refresh the page.")
+            st.markdown(
+                f"""
+                <div class="tx-row">
+                  <div class="tx-date">{date_str}</div>
+                  <div class="tx-merchant">{str(t["merchant"])}</div>
+                  <div class="tx-category">{t["category"]}</div>
+                  <div class="tx-amount {amt_class}">{amt_str}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            with st.popover("✏️", key=f"edit_{t['id']}"):
+                new_cat = st.selectbox(
+                    "Category", options=cat_options,
+                    index=cat_options.index(t["category"]) if t["category"] in cat_options else 0,
+                    key=f"cat_{t['id']}",
+                )
+                col_save, col_del = st.columns(2)
+                with col_save:
+                    if st.button("Save", key=f"save_{t['id']}", use_container_width=True):
+                        if new_cat != t["category"]:
+                            db.update_category(t["id"], new_cat)
+                        st.rerun()
+                with col_del:
+                    if st.button("🗑️ Delete", key=f"del_{t['id']}", use_container_width=True):
+                        db.delete_transaction(t["id"])
+                        st.rerun()
 
 # ---------------------------------------------------------------- admin
 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
