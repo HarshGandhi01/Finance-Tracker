@@ -1,0 +1,282 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap");
+
+:root {
+  /* Midnight Galaxy Palette */
+  --bg: #0B0A12;            /* Deepest Space */
+  --surface: #1B182B;       /* Cosmic Surface */
+  --line: #3D365C;          /* Mystical Hairline */
+  --line-bright: #6A5B9E;   /* Lavender Highlight */
+
+  /* Signal Colors (Adjusted for Galaxy Theme) */
+  --signal-mint: #00FFC3;   /* Neon Mint (Safe) */
+  --glow-mint: rgba(0, 255, 195, 0.3);
+  --signal-yellow: #FDFD96;  /* Starlight Yellow (Caution) */
+  --glow-yellow: rgba(253, 253, 150, 0.3);
+  --signal-red: #FF4D6D;     /* Nebula Red (Panic) */
+  --glow-red: rgba(255, 77, 109, 0.3);
+
+  --text: #E6E6FA;           /* Silver/Lavender Text */
+  --mute: #A490C2;           /* Lavender Muted */
+  --mute-dark: #5A4D7A;
+
+  --radius-hard: 2px;
+  --border-weight: 1px;
+
+  --font-display: 'JetBrains Mono', monospace;
+  --font-body: 'Space Grotesk', sans-serif;
+}
+
+/* ---------- Global Theme Force ---------- */
+html, body, .stApp, [data-testid="stAppViewContainer"] {
+    background: var(--bg) !important;
+    color: var(--text) !important;
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+}
+
+[data-testid="stHeader"], [data-testid="stToolbar"] { background: transparent !important; }
+.stApp { background: var(--bg) !important; }
+
+/* The "Galactic" scanline and dust effect */
+.stApp::after {
+  content: " ";
+  display: block;
+  position: fixed;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(20, 15, 30, 0) 50%, rgba(0, 0, 0, 0.1) 50%),
+              radial-gradient(circle at 50% 50%, rgba(106, 91, 158, 0.05) 0%, transparent 80%);
+  z-index: 9999;
+  background-size: 100% 4px, 100% 100%;
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+/* ---------- Typography ---------- */
+.nav-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.8rem;
+  letter-spacing: 0.1em;
+  color: var(--signal-mint);
+  text-transform: uppercase;
+  text-shadow: 0 0 15px var(--glow-mint);
+}
+
+.section-title {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--mute);
+  margin: 3rem 0 1rem;
+  border-left: 4px solid var(--signal-mint);
+  padding-left: 12px;
+}
+
+/* ---------- Modular HUD Panels (FIXED OVERLAPS) ---------- */
+.hud-panel {
+  background: var(--surface);
+  border: var(--border-weight) solid var(--line);
+  border-radius: var(--radius-hard);
+  padding: 2rem; /* Increased padding for better air */
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.3);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.hud-panel:hover {
+  border-color: var(--line-bright);
+  box-shadow: 0 15px 40px rgba(0,0,0,0.6), inset 0 0 30px rgba(106, 91, 158, 0.1);
+}
+
+.hud-label {
+  font-family: var(--font-body);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--mute);
+  margin-bottom: 1rem;
+  display: block;
+  opacity: 0.8;
+}
+
+.hud-value {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.hud-value-lg {
+  font-size: clamp(3.5rem, 12vw, 6rem);
+  line-height: 0.9;
+  letter-spacing: -0.05em;
+  margin: 0.5rem 0;
+}
+
+.hud-value-md {
+  font-size: 2.5rem;
+  line-height: 1.1;
+}
+
+/* ---------- Signal-State Overlays ---------- */
+.status-comfortable {
+    color: var(--signal-mint) !important;
+    text-shadow: 0 0 20px var(--glow-mint);
+}
+.status-caution {
+    color: var(--signal-yellow) !important;
+    text-shadow: 0 0 20px var(--glow-yellow);
+}
+.status-cooked {
+    color: var(--signal-red) !important;
+    text-shadow: 0 0 20px var(--glow-red);
+}
+
+.bar {
+  height: 10px;
+  background: #000;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-hard);
+  margin: 2rem 0 1rem;
+  overflow: hidden;
+}
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--signal-mint);
+  transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.bar-fill.status-caution { background: var(--signal-yellow); }
+.bar-fill.status-cooked {
+    background: var(--signal-red);
+    box-shadow: 0 0 15px var(--signal-red);
+}
+.bar-cap {
+  display: flex;
+  justify-content: space-between;
+  color: var(--mute-dark);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Tactical Readouts (Stat Tiles) ---------- */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+.hud-tile {
+  background: var(--surface);
+  border: var(--border-weight) solid var(--line);
+  border-left: 4px solid var(--line);
+  border-radius: var(--radius-hard);
+  padding: 1.5rem;
+  position: relative;
+}
+.hud-tile:hover {
+  border-color: var(--line-bright);
+  background: #221e35;
+}
+.hud-tile .tile-label {
+  color: var(--mute);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.75rem;
+}
+.hud-tile .tile-value {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 1.8rem;
+  color: var(--text);
+}
+.hud-tile.lead {
+  border-left-color: var(--signal-mint);
+}
+.hud-tile.lead .tile-value {
+  color: var(--signal-mint);
+  text-shadow: 0 0 15px var(--glow-mint);
+}
+
+/* ---------- Terminal Ledger ---------- */
+.tx-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.2rem;
+  background: var(--surface);
+  border: var(--border-weight) solid var(--line);
+  border-radius: var(--radius-hard);
+  margin-bottom: 0.6rem;
+  transition: all 0.2s ease;
+}
+.tx-row:hover {
+  background: #221e35;
+  border-color: var(--line-bright);
+}
+.tx-date {
+  color: var(--mute);
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  min-width: 5rem;
+}
+.tx-merchant {
+  flex: 1;
+  font-weight: 500;
+  color: #fff;
+}
+.tx-category {
+  font-family: var(--font-body);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text);
+  background: #000;
+  border: 1px solid var(--line);
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-hard);
+}
+.tx-amount {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.2rem;
+  min-width: 7rem;
+  text-align: right;
+}
+.tx-debit { color: var(--text); }
+.tx-credit { color: var(--signal-mint); text-shadow: 0 0 10px var(--glow-mint); }
+
+/* ---------- Component Overrides ---------- */
+[data-baseweb="select"] > div, [data-baseweb="input"] {
+  background: #000 !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius-hard) !important;
+  color: var(--text) !important;
+}
+.stButton > button {
+  border-radius: var(--radius-hard);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+.stButton > button:hover {
+  border-color: var(--signal-mint);
+  color: var(--signal-mint);
+  box-shadow: 0 0 15px var(--glow-mint);
+}
+
+@media (max-width: 720px) {
+  .tiles { grid-template-columns: 1fr; }
+  .hud-value-lg { font-size: 3.5rem; }
+}
