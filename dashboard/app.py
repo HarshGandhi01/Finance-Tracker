@@ -295,12 +295,15 @@ bar_pct = min(max(food_spent / TARGET_DAILY, 0), 1) * 100 if TARGET_DAILY else 0
 
 hero_left, hero_right = st.columns([1, 1.25], gap="large", vertical_alignment="center")
 with hero_left:
+    # --- Hero Left (System Depletion) ---
     st.markdown(
         f"""
         <div class="hud-panel">
           <div class="hud-label">SYSTEM_DEPLETION_ESTIMATE</div>
           <div class="hud-value-lg {clock_tone}">{days_left_label}</div>
-          <div class="hud-text" style="font-family:var(--font-display); font-size:0.8rem;">{inr(balance)} REMAINING · {rate_description.upper()}</div>
+          <div class="hud-text" style="font-family:var(--font-display); font-size:0.8rem; letter-spacing:0.05em;">
+            {inr(balance)} REMAINING · {rate_description.upper()}
+          </div>
         </div>
         """,
         unsafe_allow_html=True,

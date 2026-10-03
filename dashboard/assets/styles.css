@@ -3,73 +3,88 @@
 :root {
   /* Palette: The Void & Signal */
   --bg: #0D0D0D;            /* Obsidian */
-  --surface: #1A1A1E;       /* Gunmetal Surface */
+  --surface: #141418;       /* Hardware Surface */
   --line: #2A2A2E;          /* Hairline border */
-  --line-bright: #3F3F44;   /* Active border */
+  --line-bright: #4F4F55;   /* Active border */
 
-  /* Signal Colors */
-  --signal-mint: #00FF9F;    /* Safe / Positive / Comfortable */
-  --signal-yellow: #FDFD96;  /* Warning / Caution / Sweating */
-  --signal-red: #FF3131;     /* Danger / Cooked / Panic */
+  /* Signal Colors with Glow */
+  --signal-mint: #00FF9F;
+  --glow-mint: rgba(0, 255, 159, 0.3);
+  --signal-yellow: #FDFD96;
+  --glow-yellow: rgba(253, 253, 150, 0.3);
+  --signal-red: #FF3131;
+  --glow-red: rgba(255, 49, 49, 0.3);
 
-  --text: #F2F2F4;           /* High-contrast Body */
-  --mute: #66666B;           /* Dimmed Labels */
+  --text: #F2F2F4;
+  --mute: #7A7A80;
   --mute-dark: #444448;
 
-  /* Hardware Specs */
-  --radius-hard: 4px;
+  --radius-hard: 2px;
   --border-weight: 1px;
 
-  /* Typography */
-  --font-display: 'JetBrains Mono', monospace; /* For numbers/data */
-  --font-body: 'Public Sans', sans-serif;    /* For UI labels */
+  --font-display: 'JetBrains Mono', monospace;
+  --font-body: 'Public Sans', sans-serif;
 }
 
-/* ---------- Base ---------- */
-html, body, .stApp, [class*="st-"] { font-family: var(--font-body); }
-.stApp { background: var(--bg); color: var(--text); }
-.block-container { max-width: 1100px; padding-top: 3rem; padding-bottom: 5rem; }
-[data-testid="stHeader"] { background: transparent; }
-#MainMenu, footer, [data-testid="stDecoration"], [data-testid="stDeployButton"] { display: none !important; }
-hr { border-color: var(--line); border-top-width: 1px; margin: 3rem 0; }
-::selection { background: rgba(0, 255, 159, 0.3); color: inherit; }
+/* ---------- Global Theme Force ---------- */
+html, body, .stApp, [data-testid="stAppViewContainer"] {
+    background: var(--bg) !important;
+    color: var(--text) !important;
+    font-family: var(--font-body);
+}
 
-/* Thin, quiet scrollbar */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+/* Eliminate all Streamlit default grays/whites */
+[data-testid="stHeader"], [data-testid="stToolbar"] { background: transparent !important; }
+.stApp { background: var(--bg) !important; }
+[data-testid="stVerticalBlock"] { gap: 1.5rem !important; }
+
+/* The "Scanline" effect for that HUD feel */
+.stApp::after {
+  content: " ";
+  display: block;
+  position: fixed;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%),
+              linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+  z-index: 9999;
+  background-size: 100% 4px, 3px 100%;
+  pointer-events: none;
+  opacity: 0.3;
+}
 
 /* ---------- Typography ---------- */
 .nav-title {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 1.6rem;
-  letter-spacing: -0.02em;
-  color: #fff;
-  padding-top: 0.2rem;
+  font-size: 1.8rem;
+  letter-spacing: 0.1em;
+  color: var(--signal-mint);
   text-transform: uppercase;
+  text-shadow: 0 0 10px var(--glow-mint);
 }
+
 .section-title {
   font-family: var(--font-body);
-  font-weight: 600;
-  font-size: 0.85rem;
-  letter-spacing: 0.1em;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--mute);
-  margin: 3.5rem 0 1.2rem;
-  border-left: 3px solid var(--line);
+  margin: 3rem 0 1rem;
+  border-left: 4px solid var(--signal-mint);
   padding-left: 12px;
 }
-.spacer-lg { height: 2.5rem; }
 
-/* ---------- The Modular Panel System ---------- */
+/* ---------- Modular HUD Panels (FIXED OVERLAPS) ---------- */
 .hud-panel {
   background: var(--surface);
   border: var(--border-weight) solid var(--line);
   border-radius: var(--radius-hard);
   padding: 1.5rem;
   position: relative;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+  z-index: 1;
+  box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+  overflow: hidden; /* Prevent children from overlapping outside */
   transition: border-color 0.2s ease;
 }
 
@@ -79,13 +94,14 @@ hr { border-color: var(--line); border-top-width: 1px; margin: 3rem 0; }
 
 .hud-label {
   font-family: var(--font-body);
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.65rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.15em;
   color: var(--mute);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
   display: block;
+  opacity: 0.8;
 }
 
 .hud-value {
@@ -96,32 +112,35 @@ hr { border-color: var(--line); border-top-width: 1px; margin: 3rem 0; }
 }
 
 .hud-value-lg {
-  font-size: clamp(3.5rem, 12vw, 6rem);
+  font-size: clamp(3rem, 10vw, 5rem);
   line-height: 1;
   letter-spacing: -0.04em;
   margin: 0.5rem 0;
 }
 
 .hud-value-md {
-  font-size: 1.8rem;
+  font-size: 2rem;
   line-height: 1.2;
 }
 
-.hud-text {
-  color: var(--mute);
-  font-size: 0.95rem;
-  line-height: 1.4;
-  margin-bottom: 1rem;
+/* ---------- Signal-State Overlays ---------- */
+.status-comfortable {
+    color: var(--signal-mint) !important;
+    text-shadow: 0 0 15px var(--glow-mint);
+}
+.status-caution {
+    color: var(--signal-yellow) !important;
+    text-shadow: 0 0 15px var(--glow-yellow);
+}
+.status-cooked {
+    color: var(--signal-red) !important;
+    text-shadow: 0 0 15px var(--glow-red);
 }
 
-/* ---------- Signal States ---------- */
-.status-comfortable { color: var(--signal-mint) !important; }
-.status-caution { color: var(--signal-yellow) !important; }
-.status-cooked { color: var(--signal-red) !important; }
-
 .bar {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.05);
+  height: 8px;
+  background: #000;
+  border: 1px solid var(--line);
   border-radius: var(--radius-hard);
   margin: 1.5rem 0 0.6rem;
   overflow: hidden;
@@ -129,55 +148,46 @@ hr { border-color: var(--line); border-top-width: 1px; margin: 3rem 0; }
 .bar-fill {
   display: block;
   height: 100%;
-  border-radius: var(--radius-hard);
   background: var(--signal-mint);
   transition: width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .bar-fill.status-caution { background: var(--signal-yellow); }
 .bar-fill.status-cooked {
-  background: var(--signal-red);
-  box-shadow: 0 0 8px var(--signal-red);
-}
-.bar-cap {
-  display: flex;
-  justify-content: space-between;
-  color: var(--mute-dark);
-  font-family: var(--font-display);
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
+    background: var(--signal-red);
+    box-shadow: 0 0 10px var(--signal-red);
 }
 
-/* ---------- Stat Tiles (Data Readouts) ---------- */
+/* ---------- Tactical Readouts (Stat Tiles) ---------- */
 .tiles {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
+  gap: 1.5rem;
 }
 .hud-tile {
   background: var(--surface);
   border: var(--border-weight) solid var(--line);
-  border-left: 3px solid var(--line);
+  border-left: 4px solid var(--line);
   border-radius: var(--radius-hard);
-  padding: 1.2rem 1.5rem;
-  transition: all 0.2s ease;
+  padding: 1.2rem;
+  position: relative;
 }
 .hud-tile:hover {
   border-color: var(--line-bright);
-  background: #202024;
+  background: #1d1d22;
 }
 .hud-tile .tile-label {
   color: var(--mute);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.1em;
   margin-bottom: 0.5rem;
 }
 .hud-tile .tile-value {
   font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   color: var(--text);
 }
 .hud-tile.lead {
@@ -185,112 +195,80 @@ hr { border-color: var(--line); border-top-width: 1px; margin: 3rem 0; }
 }
 .hud-tile.lead .tile-value {
   color: var(--signal-mint);
+  text-shadow: 0 0 10px var(--glow-mint);
 }
 
-/* ---------- Terminal Ledger (Transactions) ---------- */
+/* ---------- Terminal Ledger ---------- */
 .tx-row {
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 0.8rem 1.2rem;
+  padding: 0.75rem 1rem;
   background: var(--surface);
   border: var(--border-weight) solid var(--line);
   border-radius: var(--radius-hard);
-  margin-bottom: 0.4rem;
-  transition: all 0.15s ease;
+  margin-bottom: 0.5rem;
+  transition: all 0.1s ease;
 }
 .tx-row:hover {
-  background: #202024;
+  background: #1d1d22;
   border-color: var(--line-bright);
 }
 .tx-date {
   color: var(--mute);
   font-family: var(--font-display);
-  font-size: 0.85rem;
-  min-width: 4rem;
-  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  min-width: 4.5rem;
 }
 .tx-merchant {
   flex: 1;
   font-weight: 500;
-  font-size: 1rem;
   color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .tx-category {
   font-family: var(--font-body);
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--text);
-  background: var(--line);
-  border: 1px solid var(--line-bright);
+  background: #000;
+  border: 1px solid var(--line);
   padding: 0.2rem 0.5rem;
   border-radius: var(--radius-hard);
-  white-space: nowrap;
 }
 .tx-amount {
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 1.1rem;
-  font-variant-numeric: tabular-nums;
-  min-width: 6rem;
+  min-width: 6.5rem;
   text-align: right;
 }
 .tx-debit { color: var(--text); }
-.tx-credit { color: var(--signal-mint); }
+.tx-credit { color: var(--signal-mint); text-shadow: 0 0 10px var(--glow-mint); }
 
-/* ---------- Controls & UI ---------- */
-[data-baseweb="select"] > div, [data-baseweb="input"], [data-baseweb="textarea"] {
-  background: var(--surface) !important;
-  border-color: var(--line) !important;
+/* ---------- Component Overrides ---------- */
+[data-baseweb="select"] > div, [data-baseweb="input"] {
+  background: #000 !important;
+  border: 1px solid var(--line) !important;
   border-radius: var(--radius-hard) !important;
   color: var(--text) !important;
 }
-[data-baseweb="select"] > div:focus-within, [data-baseweb="input"]:focus-within {
-  border-color: var(--signal-mint) !important;
-}
-.stButton > button, [data-testid="stFormSubmitButton"] > button {
+.stButton > button {
   border-radius: var(--radius-hard);
   border: 1px solid var(--line);
   background: var(--surface);
-  font-family: var(--font-body);
-  font-weight: 600;
   color: var(--text);
-  transition: all 0.2s ease;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  font-size: 0.75rem;
 }
 .stButton > button:hover {
   border-color: var(--signal-mint);
   color: var(--signal-mint);
-  background: rgba(0, 255, 159, 0.05);
+  box-shadow: 0 0 10px var(--glow-mint);
 }
 
-/* ---------- Expanders ---------- */
-[data-testid="stExpander"] {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-hard);
-  background: var(--surface);
-}
-[data-testid="stExpander"] summary {
-  font-family: var(--font-display);
-  font-weight: 600;
-  color: var(--text);
-  text-transform: uppercase;
-  font-size: 0.85rem;
-}
-
-/* ---------- Accessibility ---------- */
-:focus-visible { outline: 2px solid var(--signal-mint) !important; outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
-
-/* ---------- Mobile ---------- */
 @media (max-width: 720px) {
-  .block-container { padding: 1.2rem 0.9rem 3rem; }
-  .tiles { grid-template-columns: repeat(2, 1fr); }
+  .tiles { grid-template-columns: 1fr; }
   .hud-value-lg { font-size: 3rem; }
-  .tx-row { flex-wrap: wrap; gap: 0.5rem; }
-  .tx-merchant { min-width: 50%; }
 }
