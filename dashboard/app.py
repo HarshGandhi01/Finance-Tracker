@@ -362,7 +362,7 @@ with st.expander('How these numbers are calculated'):
 
 # ---------------------------------------------------------------- breakdown charts
 txs = m["txs"]
-    st.markdown('<div class="section-title">RESOURCE_DISTRIBUTION</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">RESOURCE_DISTRIBUTION</div>', unsafe_allow_html=True)
 
 if not txs:
     st.info("No spending data to analyze this cycle.")
