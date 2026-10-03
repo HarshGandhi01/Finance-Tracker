@@ -42,3 +42,10 @@ Thumbs.db
 .test-deps/
 .vercel/
 .claude/
+
+# --- LOCAL TOOLS & PREVIEWS ---
+/.freebuff/
+/CLAUDE.md
+/home_desktop.png
+/home_mobile.png
+/screenshot_app.py
