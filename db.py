@@ -2,6 +2,7 @@
 """
 import calendar
 import os
+from decimal import Decimal, InvalidOperation
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 
@@ -49,6 +50,14 @@ def _schema():
             created_at  TEXT    NOT NULL
         )""",
         "CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date)",
+        f"""CREATE TABLE IF NOT EXISTS expense_shares (
+            id {pk}, transaction_id INTEGER NOT NULL REFERENCES transactions(id),
+            person TEXT NOT NULL, cents INTEGER NOT NULL CHECK(cents > 0))""",
+        """CREATE TABLE IF NOT EXISTS split_repayments (
+            credit_id INTEGER PRIMARY KEY REFERENCES transactions(id),
+            share_id INTEGER NOT NULL REFERENCES expense_shares(id))""",
+        "CREATE INDEX IF NOT EXISTS idx_share_transaction ON expense_shares(transaction_id)",
+        "CREATE INDEX IF NOT EXISTS idx_repayment_share ON split_repayments(share_id)",
         """CREATE TABLE IF NOT EXISTS sinking_funds (
             name TEXT PRIMARY KEY, monthly_amount DOUBLE PRECISION NOT NULL)""",
         f"""CREATE TABLE IF NOT EXISTS expected_income (
@@ -176,38 +185,158 @@ def get_pocket_money_dates(today: date) -> list[str]:
 
 def get_received_credits(today: date) -> list:
     with conn() as c:
-        return _rows(c, "SELECT * FROM transactions WHERE direction='credit' "
+        return _rows(c, "SELECT t.*, EXISTS(SELECT 1 FROM split_repayments WHERE credit_id=t.id) AS is_repayment "
+                        "FROM transactions t WHERE direction='credit' "
                         "AND status='settled' AND date <= :d ORDER BY date DESC, id DESC", d=str(today))
 
 
 def add_transaction(date_, merchant, amount, direction="debit", category="Food",
-                    is_peer=False, peer_name=None, status="settled", upi_ref=None) -> bool:
+                    is_peer=False, peer_name=None, status="settled", upi_ref=None, splits=None) -> bool:
     upi_ref = (upi_ref or "").strip() or None
     try:
         with conn() as c:
-            c.execute(text(
+            result = c.execute(text(
                 "INSERT INTO transactions "
                 "(date, merchant, amount, direction, category, is_peer, peer_name, status, upi_ref, created_at) "
-                "VALUES (:d, :m, :a, :dir, :cat, :peer, :pn, :st, :ref, :ts)"),
+                "VALUES (:d, :m, :a, :dir, :cat, :peer, :pn, :st, :ref, :ts) RETURNING id"),
                 {"d": str(date_), "m": merchant.strip(), "a": float(amount), "dir": direction,
                  "cat": category, "peer": int(is_peer), "pn": peer_name, "st": status,
                  "ref": upi_ref, "ts": _now_utc()})
+            tx_id = result.scalar_one()
+            if splits:
+                _save_splits(c, tx_id, splits)
 
         return True
     except IntegrityError:
         return False
 
 
+def money_cents(value):
+    try:
+        amount = Decimal(str(value)) * 100
+        if not amount.is_finite() or amount != amount.to_integral_value() or amount < 0:
+            raise ValueError("Use a non-negative amount with at most two decimal places.")
+        return int(amount)
+    except (InvalidOperation, TypeError):
+        raise ValueError("Enter a valid amount.") from None
+
+
+def _lock_transaction(c, tx_id):
+    # Serialize split edits and settlements on both supported databases.
+    c.execute(text("UPDATE transactions SET amount=amount WHERE id=:i"), {"i": tx_id})
+    rows = _rows(c, "SELECT * FROM transactions WHERE id=:i", i=tx_id)
+    if not rows:
+        raise ValueError("Transaction no longer exists.")
+    return rows[0]
+
+
+def _save_splits(c, tx_id, splits):
+    tx = _lock_transaction(c, tx_id)
+    if splits and (tx['direction'] != 'debit' or tx['status'] != 'settled'):
+        raise ValueError("Only paid expenses can be split.")
+    cleaned = []
+    for person, amount in splits:
+        person = person.strip()
+        cents = money_cents(amount)
+        if not person or cents <= 0:
+            raise ValueError("Each person needs a name and a positive share.")
+        if person.casefold() in [n.casefold() for n, _ in cleaned]:
+            raise ValueError("Use a different name for each person.")
+        cleaned.append((person, cents))
+    total = sum(v for _, v in cleaned)
+    if total > money_cents(tx['amount']):
+        raise ValueError("Other people's shares cannot exceed the payment.")
+    if _rows(c, "SELECT 1 FROM split_repayments r JOIN expense_shares s ON s.id=r.share_id "
+                "WHERE s.transaction_id=:i", i=tx_id):
+        raise ValueError("Remove linked repayments before changing this split.")
+    old = _rows(c, "SELECT COALESCE(SUM(cents),0) AS n FROM expense_shares WHERE transaction_id=:i", i=tx_id)[0]['n']
+    # Backdated edits must correct food savings already rolled into the silo.
+    settings = {r['key']: r['value'] for r in _rows(c, "SELECT key,value FROM settings")}
+    if tx['category'] == 'Food' and tx['direction'] == 'debit' and tx['date'] < settings.get('food_silo_last_update', ''):
+        old_spend = tx['amount'] - old / 100 if old or not tx['is_peer'] else 0
+        new_spend = tx['amount'] - total / 100 if total or not tx['is_peer'] else 0
+        value = float(settings.get('food_silo_balance', 0)) + old_spend - new_spend
+        c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
+                       "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {'v': str(value)})
+    c.execute(text("DELETE FROM expense_shares WHERE transaction_id=:i"), {'i': tx_id})
+    for person, cents in cleaned:
+        c.execute(text("INSERT INTO expense_shares(transaction_id,person,cents) VALUES (:i,:p,:a)"),
+                  {'i': tx_id, 'p': person, 'a': cents})
+
+
+def set_splits(tx_id, splits):
+    with conn() as c:
+        _save_splits(c, tx_id, splits)
+
+
+def get_splits(tx_id=None):
+    with conn() as c:
+        return _rows(c, "SELECT s.*, t.date, t.merchant, COALESCE((SELECT SUM(t2.amount) "
+                        "FROM split_repayments r JOIN transactions t2 ON t2.id=r.credit_id "
+                        "WHERE r.share_id=s.id),0) AS repaid FROM expense_shares s "
+                        "JOIN transactions t ON t.id=s.transaction_id "
+                        + ("WHERE s.transaction_id=:i " if tx_id is not None else "") +
+                        "ORDER BY t.date,s.id", i=tx_id)
+
+
+def record_repayment(share_id, received_on, amount=None, credit_id=None):
+    with conn() as c:
+        shares = _rows(c, "SELECT * FROM expense_shares WHERE id=:i", i=share_id)
+        if not shares:
+            raise ValueError("This split no longer exists.")
+        share = shares[0]
+        expense = _lock_transaction(c, share['transaction_id'])
+        if not _rows(c, "SELECT 1 FROM expense_shares WHERE id=:i", i=share_id):
+            raise ValueError("This split changed. Refresh and try again.")
+        if credit_id is not None:
+            credit = _lock_transaction(c, credit_id)
+            if credit['direction'] != 'credit' or credit['status'] != 'settled' or credit['category'] == 'Pocket Money':
+                raise ValueError("Choose a received credit that is not pocket money.")
+            if _rows(c, "SELECT 1 FROM split_repayments WHERE credit_id=:i", i=credit_id):
+                raise ValueError("That credit is already linked to a repayment.")
+            amount, received_on = credit['amount'], credit['date']
+        received_on = date.fromisoformat(str(received_on))
+        if received_on > today_ist() or str(received_on) < expense['date']:
+            raise ValueError("Repayment date must be between the expense date and today.")
+        cents = money_cents(amount)
+        paid = _rows(c, "SELECT COALESCE(SUM(t.amount),0) AS n FROM split_repayments r "
+                        "JOIN transactions t ON t.id=r.credit_id WHERE r.share_id=:i", i=share_id)[0]['n']
+        if cents <= 0 or cents > share['cents'] - round(paid * 100):
+            raise ValueError("Repayment must be positive and cannot exceed what is owed.")
+        if credit_id is None:
+            credit_id = c.execute(text("INSERT INTO transactions "
+                "(date,merchant,amount,direction,category,status,created_at) "
+                "VALUES (:d,:m,:a,'credit','Other','settled',:ts) RETURNING id"),
+                {'d': str(received_on), 'm': f"Repayment from {share['person']}",
+                 'a': cents / 100, 'ts': _now_utc()}).scalar_one()
+        c.execute(text("INSERT INTO split_repayments(credit_id,share_id) VALUES (:c,:s)"),
+                  {'c': credit_id, 's': share_id})
+
+
+def unlink_repayment(credit_id):
+    with conn() as c:
+        c.execute(text("DELETE FROM split_repayments WHERE credit_id=:i"), {'i': credit_id})
+
+
 def get_transactions(month: str, as_of: date | None = None):
     start_date, end_date = get_cycle_dates(month, as_of)
     with conn() as c:
-        return _rows(c, "SELECT * FROM transactions WHERE date >= :s AND date <= :e "
+        return _rows(c, "SELECT t.*, amount - COALESCE((SELECT SUM(cents)/100.0 FROM expense_shares "
+                        "WHERE transaction_id=t.id),0) AS personal_amount, "
+                        "EXISTS(SELECT 1 FROM split_repayments WHERE credit_id=t.id) AS is_repayment "
+                        "FROM transactions t WHERE date >= :s AND date <= :e "
                         "ORDER by date DESC, id DESC",
                         s=str(start_date), e=str(end_date))
 
 
 def delete_transaction(tx_id: int):
     with conn() as c:
+        _lock_transaction(c, tx_id)
+        if _rows(c, "SELECT 1 FROM split_repayments r JOIN expense_shares s ON s.id=r.share_id "
+                    "WHERE s.transaction_id=:i", i=tx_id):
+            raise ValueError("Remove linked repayments before deleting this expense.")
+        _save_splits(c, tx_id, [])
+        c.execute(text("DELETE FROM split_repayments WHERE credit_id=:i"), {"i": tx_id})
         c.execute(text("DELETE FROM transactions WHERE id=:i"), {"i": tx_id})
 
 
@@ -219,6 +348,8 @@ def set_peer(tx_id: int, is_peer: bool):
 
 def update_category(tx_id: int, new_cat: str):
     with conn() as c:
+        if new_cat == 'Pocket Money' and _rows(c, "SELECT 1 FROM split_repayments WHERE credit_id=:i", i=tx_id):
+            raise ValueError("A repayment cannot be pocket money.")
         c.execute(text("UPDATE transactions SET category=:cat WHERE id=:i"),
                   {"cat": new_cat, "i": tx_id})
 
@@ -357,9 +488,11 @@ def update_food_silo(today: date, transactions: list, target_daily: float = 350.
     while current_date < today:
         current_date_str = str(current_date)
         with conn() as c:
-            spend_rows = _rows(c, "SELECT SUM(amount) as s FROM transactions "
+            spend_rows = _rows(c, "SELECT SUM(amount - COALESCE((SELECT SUM(cents)/100.0 "
+                                  "FROM expense_shares WHERE transaction_id=t.id),0)) as s FROM transactions t "
                                   "WHERE date=:d AND category='Food' "
-                                  "AND direction='debit' AND is_peer=0",
+                                  "AND direction='debit' AND (is_peer=0 OR EXISTS "
+                                  "(SELECT 1 FROM expense_shares WHERE transaction_id=t.id))",
                                   d=current_date_str)
         day_spend = float(spend_rows[0]["s"] or 0.0)
         current_silo += (target_daily - day_spend)
@@ -389,12 +522,13 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     txs = [t for t in txs if t["date"] <= str(today)]
 
     debits = sum(t["amount"] for t in txs if t["direction"] == "debit")
+    personal_debits = sum(t["personal_amount"] for t in txs if t["direction"] == "debit")
     peer_debits = sum(t["amount"] for t in txs if t["direction"] == "debit" and t["is_peer"])
     received = sum(t['amount'] for t in txs
                    if t['direction'] == 'credit' and t['status'] == 'settled'
-                   and t['category'] != 'Pocket Money')
+                   and t['category'] != 'Pocket Money' and not t['is_repayment'])
     # Pocket money funds the cycle; other received money offsets cash spent.
-    burn = debits - received
+    burn = personal_debits - received
 
     balance = current_balance(month, txs, settings, today)
     has_balance = balance is not None
@@ -408,8 +542,9 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
         fund_prior[name] = float(v) if v is not None else round(alloc * elapsed_frac)
 
     fund_spent = {
-        name: fund_prior[name] + sum(t["amount"] for t in txs
-                                     if t["direction"] == "debit" and t["category"] == name and not t["is_peer"])
+        name: fund_prior[name] + sum(t["personal_amount"] for t in txs
+                                     if t["direction"] == "debit" and t["category"] == name
+                                     and (not t["is_peer"] or t['personal_amount'] != t['amount']))
         for name in funds
     }
     reserved = sum(max(funds[n] - fund_spent[n], 0) for n in funds)
@@ -428,11 +563,11 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     fun_money = daily_allowance - target_daily
 
     today_str = str(today)
-    today_food_spend = sum(t["amount"] for t in txs
+    today_food_spend = sum(t["personal_amount"] for t in txs
                            if str(t["date"]).startswith(today_str)
                            and t["category"] == "Food"
                            and t["direction"] == "debit"
-                           and not t["is_peer"])
+                           and (not t["is_peer"] or t['personal_amount'] != t['amount']))
 
     food_silo = float(settings.get("food_silo_balance", 0.0))
 
@@ -452,7 +587,7 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     return dict(
         has_balance=has_balance, incoming=incoming, expected=expected, balance=balance,
         burn=burn, gross=debits, peer=peer_debits, fund_prior=fund_prior, reserved=reserved,
-        received_offsets=received,
+        received_offsets=received, personal_spending=personal_debits,
         food_balance=food_balance, funds=funds, fund_spent=fund_spent,
         days_remaining=days_remaining, meals_remaining=meals_remaining, days_in_cycle=days_in_cycle,
         cycle_start=start_date, cycle_end=end_date,

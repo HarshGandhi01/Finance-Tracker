@@ -90,9 +90,13 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today) -> go.Figur
 
     # Group by date and calculate cumulative sum
     txs = txs.copy()
+    if 'personal_amount' in txs:
+        txs['amount'] = txs['personal_amount']
     if 'direction' in txs:
         credits = txs['direction'] == 'credit'
         offsets = credits & (txs['category'] != 'Pocket Money') & (txs['status'] == 'settled')
+        if 'is_repayment' in txs:
+            offsets &= ~txs['is_repayment'].astype(bool)
         txs.loc[credits & ~offsets, 'amount'] = 0
         txs.loc[offsets, 'amount'] = -txs.loc[offsets, 'amount']
     amounts = txs.assign(date=pd.to_datetime(txs['date'])).groupby('date')['amount'].sum()
