@@ -1,4 +1,4 @@
-"""Am I Cooked? — dashboard (redesign: presentation only, db calls unchanged)."""
+"""Am I Cooked? dashboard."""
 import os
 import sys
 from datetime import date
@@ -53,6 +53,109 @@ def split_fields(amount, key, existing=None):
         return None
     return splits
 
+
+
+@st.fragment
+def transaction_editor(t, cat_options, existing_splits):
+    with st.popover("Edit", key=f"edit_{t['id']}", help="Edit or delete"):
+        if t['direction'] == 'debit':
+            st.caption(f"Your share {inr(t['personal_amount'], 2)} · Paid {inr(t['amount'], 2)}")
+            with st.container():
+                edited_splits = split_fields(t['amount'], t['id'], existing_splits)
+            if st.button("Save split", key=f"save_split_{t['id']}", disabled=edited_splits is None):
+                try:
+                    db.set_splits(t['id'], edited_splits)
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        if t['is_repayment']:
+            st.caption("Split repayment · excluded from spending offsets")
+            if st.button("Unlink repayment", key=f"unlink_{t['id']}"):
+                db.unlink_repayment(t['id'])
+                st.rerun()
+        new_cat = st.selectbox(
+            "Category", options=cat_options,
+            index=cat_options.index(t["category"]) if t["category"] in cat_options else 0,
+            key=f"cat_{t['id']}",
+        )
+        col_save, col_del = st.columns(2)
+        with col_save:
+            if st.button("Save", key=f"save_{t['id']}", use_container_width=True):
+                try:
+                    if new_cat != t["category"]:
+                        db.update_category(t["id"], new_cat)
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        with col_del:
+            if st.button("Delete", key=f"del_{t['id']}", use_container_width=True):
+                try:
+                    db.delete_transaction(t["id"])
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+
+
+@st.fragment
+def manual_transaction_editor(today):
+    with st.popover("Add manual transaction", width="stretch"):
+        m_date = st.date_input("Transaction date", value=today, max_value=today)
+        m_merchant = st.text_input("Merchant", placeholder="e.g. Hungry")
+        m_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
+        m_cat = st.selectbox("Category", options=db.CATEGORIES)
+        m_dir = st.selectbox("Direction", options=["debit", "credit"])
+        manual_splits = split_fields(m_amount, 'manual') if m_dir == 'debit' else []
+        if st.button("Log transaction", width="stretch", disabled=manual_splits is None):
+            if m_merchant and m_amount > 0:
+                try:
+                    if db.add_transaction(m_date, m_merchant, m_amount, direction=m_dir, category=m_cat, splits=manual_splits):
+                        st.rerun()
+                    else:
+                        st.error("Could not save this transaction.")
+                except ValueError as exc:
+                    st.error(str(exc))
+            else:
+                st.error("Enter a merchant and an amount.")
+
+
+@st.fragment
+def repayment_editor(shares, received_credits, today):
+    with st.expander("Owed to me", expanded=True):
+        outstanding = [s for s in shares if s['date'] <= str(today) and s['cents'] - round(s['repaid'] * 100) > 0]
+        st.metric("Outstanding across all cycles", inr(sum(s['cents'] / 100 - s['repaid'] for s in outstanding), 2))
+        st.caption("Link repayments already in your records to avoid adding the money twice.")
+        if not outstanding:
+            st.info("All settled. Split a transaction to track money owed to you.")
+        for s in outstanding:
+            remaining = (s['cents'] - round(s['repaid'] * 100)) / 100
+            with st.expander(f"{s['person']} · {inr(remaining, 2)} owed · {s['merchant']} · {s['date']}"):
+                st.caption(f"Share {inr(s['cents'] / 100, 2)} · Repaid {inr(s['repaid'], 2)}")
+                method = st.radio("Repayment", ["Link existing credit", "Record new repayment"], key=f"repay_method_{s['id']}")
+                credit_id = None
+                repayment_amount = remaining
+                repayment_date = today
+                if method == "Link existing credit":
+                    available = [t for t in received_credits
+                                 if t['category'] != 'Pocket Money' and not t['is_repayment'] and t['date'] >= s['date']
+                                 and db.money_cents(t['amount']) <= db.money_cents(remaining)]
+                    options = {t['id']: t for t in available}
+                    credit_id = st.selectbox("Received credit", list(options), index=None,
+                        format_func=lambda i: f"{options[i]['date']} · {options[i]['merchant']} · {inr(options[i]['amount'], 2)}",
+                        key=f"repay_credit_{s['id']}")
+                else:
+                    repayment_amount = st.number_input("Amount received (₹)", min_value=0.01,
+                        max_value=remaining, value=remaining, step=1.0, key=f"repay_amount_{s['id']}")
+                    repayment_date = st.date_input("Received on", value=today, min_value=date.fromisoformat(s['date']),
+                                                   max_value=today, key=f"repay_date_{s['id']}")
+                if st.button("Save repayment", key=f"repay_save_{s['id']}",
+                             disabled=method == "Link existing credit" and credit_id is None):
+                    try:
+                        db.record_repayment(s['id'], repayment_date, repayment_amount, credit_id)
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+
+
 # ---------------------------------------------------------------- top bar
 today = db.today_ist()
 
@@ -62,7 +165,7 @@ def _shift_month(d: date, delta: int) -> str:
 
 month_now = db.get_current_cycle_month(today)
 try:
-    db.update_food_silo(today, db.get_transactions(month_now), TARGET_DAILY)
+    db.update_food_silo(today, [], TARGET_DAILY)
 except AttributeError:
     # This handles cases where the deployed version of db.py
     # might be out of sync with the app.py during a push.
@@ -79,10 +182,16 @@ with col_nav2:
                          format_func=lambda key: f"From {key}" if len(key) == 10 else key,
                          label_visibility="collapsed")
 
+received_credits = db.get_received_credits(today)
+shares = db.get_splits()
+shares_by_tx = {}
+for share in shares:
+    shares_by_tx.setdefault(share["transaction_id"], []).append(share)
+
 with st.expander("Pocket-money cycle", expanded=not receipt_dates):
     st.caption("Your cycle starts on the date of a received credit marked Pocket Money. "
                "Mark the existing ₹12,000 payment below. Other credits do not reset your cycle.")
-    credits = [t for t in db.get_received_credits(today) if not t['is_repayment']]
+    credits = [t for t in received_credits if not t['is_repayment']]
     if credits:
         credits_by_id = {t["id"]: t for t in credits}
         credit_id = st.selectbox(
@@ -239,41 +348,7 @@ else:
                            width="stretch", config={"displayModeBar": False})
 
 # ---------------------------------------------------------------- splits
-with st.expander("Owed to me", expanded=True):
-    shares = db.get_splits()
-    outstanding = [s for s in shares if s['date'] <= str(today) and s['cents'] - round(s['repaid'] * 100) > 0]
-    st.metric("Outstanding across all cycles", inr(sum(s['cents'] / 100 - s['repaid'] for s in outstanding), 2))
-    st.caption("Link repayments already in your records to avoid adding the money twice.")
-    if not outstanding:
-        st.info("All settled. Split a transaction to track money owed to you.")
-    for s in outstanding:
-        remaining = (s['cents'] - round(s['repaid'] * 100)) / 100
-        with st.expander(f"{s['person']} · {inr(remaining, 2)} owed · {s['merchant']} · {s['date']}"):
-            st.caption(f"Share {inr(s['cents'] / 100, 2)} · Repaid {inr(s['repaid'], 2)}")
-            method = st.radio("Repayment", ["Link existing credit", "Record new repayment"], key=f"repay_method_{s['id']}")
-            credit_id = None
-            repayment_amount = remaining
-            repayment_date = today
-            if method == "Link existing credit":
-                available = [t for t in db.get_received_credits(today)
-                             if t['category'] != 'Pocket Money' and not t['is_repayment'] and t['date'] >= s['date']
-                             and db.money_cents(t['amount']) <= db.money_cents(remaining)]
-                options = {t['id']: t for t in available}
-                credit_id = st.selectbox("Received credit", list(options), index=None,
-                    format_func=lambda i: f"{options[i]['date']} · {options[i]['merchant']} · {inr(options[i]['amount'], 2)}",
-                    key=f"repay_credit_{s['id']}")
-            else:
-                repayment_amount = st.number_input("Amount received (₹)", min_value=0.01,
-                    max_value=remaining, value=remaining, step=1.0, key=f"repay_amount_{s['id']}")
-                repayment_date = st.date_input("Received on", value=today, min_value=date.fromisoformat(s['date']),
-                                               max_value=today, key=f"repay_date_{s['id']}")
-            if st.button("Save repayment", key=f"repay_save_{s['id']}",
-                         disabled=method == "Link existing credit" and credit_id is None):
-                try:
-                    db.record_repayment(s['id'], repayment_date, repayment_amount, credit_id)
-                    st.rerun()
-                except ValueError as exc:
-                    st.error(str(exc))
+repayment_editor(shares, received_credits, today)
 
 # ---------------------------------------------------------------- ledger
 st.markdown('<div class="section-title">Transactions</div>', unsafe_allow_html=True)
@@ -311,42 +386,7 @@ else:
             if t['is_repayment']:
                 st.caption("Split repayment")
         with col2:
-            with st.popover("Edit", key=f"edit_{t['id']}", help="Edit or delete"):
-                if t['direction'] == 'debit':
-                    st.caption(f"Your share {inr(t['personal_amount'], 2)} · Paid {inr(t['amount'], 2)}")
-                    edited_splits = split_fields(t['amount'], t['id'], db.get_splits(t['id']))
-                    if st.button("Save split", key=f"save_split_{t['id']}", disabled=edited_splits is None):
-                        try:
-                            db.set_splits(t['id'], edited_splits)
-                            st.rerun()
-                        except ValueError as exc:
-                            st.error(str(exc))
-                if t['is_repayment']:
-                    st.caption("Split repayment · excluded from spending offsets")
-                    if st.button("Unlink repayment", key=f"unlink_{t['id']}"):
-                        db.unlink_repayment(t['id'])
-                        st.rerun()
-                new_cat = st.selectbox(
-                    "Category", options=cat_options,
-                    index=cat_options.index(t["category"]) if t["category"] in cat_options else 0,
-                    key=f"cat_{t['id']}",
-                )
-                col_save, col_del = st.columns(2)
-                with col_save:
-                    if st.button("Save", key=f"save_{t['id']}", use_container_width=True):
-                        try:
-                            if new_cat != t["category"]:
-                                db.update_category(t["id"], new_cat)
-                            st.rerun()
-                        except ValueError as exc:
-                            st.error(str(exc))
-                with col_del:
-                    if st.button("Delete", key=f"del_{t['id']}", use_container_width=True):
-                        try:
-                            db.delete_transaction(t["id"])
-                            st.rerun()
-                        except ValueError as exc:
-                            st.error(str(exc))
+            transaction_editor(t, cat_options, shares_by_tx.get(t['id'], []))
 
 # ---------------------------------------------------------------- admin
 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
@@ -356,24 +396,7 @@ with st.expander("Settings & maintenance"):
         f"rollover {m.get('food_rollover', 0)} | remaining {m.get('food_remaining_today', 0)}"
     )
 
-    with st.popover("Add manual transaction", width="stretch"):
-        m_date = st.date_input("Transaction date", value=today, max_value=today)
-        m_merchant = st.text_input("Merchant", placeholder="e.g. Hungry")
-        m_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
-        m_cat = st.selectbox("Category", options=db.CATEGORIES)
-        m_dir = st.selectbox("Direction", options=["debit", "credit"])
-        manual_splits = split_fields(m_amount, 'manual') if m_dir == 'debit' else []
-        if st.button("Log transaction", width="stretch", disabled=manual_splits is None):
-            if m_merchant and m_amount > 0:
-                try:
-                    if db.add_transaction(m_date, m_merchant, m_amount, direction=m_dir, category=m_cat, splits=manual_splits):
-                        st.rerun()
-                    else:
-                        st.error("Could not save this transaction.")
-                except ValueError as exc:
-                    st.error(str(exc))
-            else:
-                st.error("Enter a merchant and an amount.")
+    manual_transaction_editor(today)
 
     st.divider()
 

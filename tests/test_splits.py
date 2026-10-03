@@ -162,6 +162,18 @@ class SplitDashboardTests(unittest.TestCase):
                     dinner = next(t for t in db.get_transactions(str(today)[:7]) if t['merchant'] == 'Dinner')
                     self.assertAlmostEqual(dinner['personal_amount'], 33.34)
                     self.assertEqual([s['cents'] for s in db.get_splits(dinner['id'])], [3333, 3333])
+                    # More rows must not cause one database read per editor/debt.
+                    for i in range(20):
+                        db.add_transaction(today, f'Meal {i}', 100, splits=[(f'Friend {i}', 50)])
+                    dashboard_db = sys.modules['_finance_tracker_dashboard_db']
+                    with patch.object(dashboard_db, 'get_splits', wraps=dashboard_db.get_splits) as splits_read, \
+                         patch.object(dashboard_db, 'get_received_credits', wraps=dashboard_db.get_received_credits) as credits_read:
+                        app.run()
+                        self.assertEqual(list(app.exception), [])
+                        self.assertEqual(splits_read.call_count, 1)
+                        self.assertEqual(credits_read.call_count, 1)
+                    transactions = db.get_transactions(str(today)[:7])
+                    self.assertEqual(len([b for b in app.button if b.label == 'Delete']), len(transactions))
                 finally:
                     cached = sys.modules.pop('_finance_tracker_dashboard_db', None)
                     if cached:
