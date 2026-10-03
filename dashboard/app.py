@@ -299,7 +299,7 @@ with hero_left:
     st.markdown(
         f"""
         <div class="hud-panel">
-          <div class="hud-label">SYSTEM_DEPLETION_ESTIMATE</div>
+          <div class="hud-label">Days until broke</div>
           <div class="hud-value-lg {clock_tone}">{days_left_label}</div>
           <div class="hud-text" style="font-family:var(--font-display); font-size:0.8rem; letter-spacing:0.05em;">
             {inr(balance)} REMAINING · {rate_description.upper()}
@@ -313,7 +313,7 @@ with hero_right:
     st.markdown(
         f"""
         <div class="hud-panel">
-          <div class="hud-label">NUTRIENT_ALLOCATION_TODAY</div>
+          <div class="hud-label">Food budget today</div>
           <div class="hud-value-md {food_tone}">{inr(food_remaining)}</div>
           <div class="hud-text">{status_text}</div>
           <div class="bar"><span class="bar-fill {food_tone}" style="width:{bar_pct:.0f}%"></span></div>
