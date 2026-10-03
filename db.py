@@ -4,6 +4,8 @@ import calendar
 import os
 from decimal import Decimal, InvalidOperation
 from contextlib import contextmanager
+from contextvars import ContextVar
+from functools import wraps
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import create_engine, text
@@ -69,8 +71,42 @@ def _schema():
     ]
 
 
+_READ_CONNECTION = ContextVar('dashboard_read_connection', default=None)
+_READ_CACHE = ContextVar('dashboard_read_cache', default=None)
+
+
+def _reuse_read(fn):
+    """Reuse reads only inside one dashboard load, never across users or reruns."""
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        cache = _READ_CACHE.get()
+        if cache is None:
+            return fn(*args, **kwargs)
+        key = (fn.__name__, args, tuple(sorted(kwargs.items())))
+        if key not in cache:
+            cache[key] = fn(*args, **kwargs)
+        return cache[key]
+    return wrapped
+
+
+@contextmanager
+def dashboard_reads():
+    with ENGINE.begin() as c:
+        connection_token = _READ_CONNECTION.set(c)
+        cache_token = _READ_CACHE.set({})
+        try:
+            yield
+        finally:
+            _READ_CACHE.reset(cache_token)
+            _READ_CONNECTION.reset(connection_token)
+
+
 @contextmanager
 def conn():
+    active = _READ_CONNECTION.get()
+    if active is not None:
+        yield active
+        return
     with ENGINE.begin() as c:
         yield c
 
@@ -103,12 +139,15 @@ def init_db():
     _INITED = True
 
 
+@_reuse_read
 def all_settings() -> dict:
     with conn() as c:
         return {r["key"]: r["value"] for r in _rows(c, "SELECT key, value FROM settings")}
 
 
 def get_setting(key, default=None):
+    if _READ_CACHE.get() is not None:
+        return all_settings().get(key, default)
     with conn() as c:
         rows = _rows(c, "SELECT value FROM settings WHERE key=:k", k=key)
     return rows[0]["value"] if rows else default
@@ -125,6 +164,7 @@ def opening_key(month: str) -> str:
     return f"opening_balance_{month}"
 
 
+@_reuse_read
 def get_cycle_dates(month: str, as_of: date | None = None) -> tuple[date, date]:
     """Receipt-date keys identify real cycles; YYYY-MM supports legacy budgets."""
     if len(month) == 10:
@@ -175,6 +215,7 @@ def get_current_cycle_month(today: date) -> str:
     return f"{today.year}-{today.month:02d}"
 
 
+@_reuse_read
 def get_pocket_money_dates(today: date) -> list[str]:
     with conn() as c:
         rows = _rows(c, "SELECT DISTINCT date FROM transactions WHERE category='Pocket Money' "
@@ -417,8 +458,8 @@ def add_expected(date_, label, amount):
                   {"d": str(date_), "l": label.strip(), "a": float(amount)})
 
 
-def get_expected(month: str) -> list:
-    _, end_date = get_cycle_dates(month)
+def get_expected(month: str, as_of: date | None = None) -> list:
+    _, end_date = get_cycle_dates(month, as_of)
     with conn() as c:
         return _rows(c, "SELECT * FROM expected_income WHERE date<=:e ORDER BY date", e=str(end_date))
 
@@ -484,19 +525,15 @@ def update_food_silo(today: date, transactions: list, target_daily: float = 350.
         set_setting("food_silo_last_update", today_str)
         return
 
-    current_date = last_update_date
-    while current_date < today:
-        current_date_str = str(current_date)
+    if last_update_date < today:
         with conn() as c:
             spend_rows = _rows(c, "SELECT SUM(amount - COALESCE((SELECT SUM(cents)/100.0 "
                                   "FROM expense_shares WHERE transaction_id=t.id),0)) as s FROM transactions t "
-                                  "WHERE date=:d AND category='Food' "
+                                  "WHERE date>=:s AND date<:e AND category='Food' "
                                   "AND direction='debit' AND (is_peer=0 OR EXISTS "
                                   "(SELECT 1 FROM expense_shares WHERE transaction_id=t.id))",
-                                  d=current_date_str)
-        day_spend = float(spend_rows[0]["s"] or 0.0)
-        current_silo += (target_daily - day_spend)
-        current_date += timedelta(days=1)
+                                  s=str(last_update_date), e=today_str)
+        current_silo += target_daily * (today - last_update_date).days - float(spend_rows[0]["s"] or 0.0)
 
     set_setting("food_silo_balance", current_silo)
     set_setting("food_silo_last_update", today_str)
@@ -533,7 +570,7 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     balance = current_balance(month, txs, settings, today)
     has_balance = balance is not None
     balance = balance or 0.0
-    expected = get_expected(month)
+    expected = get_expected(month, today)
     incoming = sum(e["amount"] for e in expected)
 
     fund_prior = {}
@@ -596,3 +633,17 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
         safe_to_spend=safe_to_spend, daily_allowance=daily_allowance, fun_money=fun_money, rollover=rollover,
         today_food_spend=today_food_spend, food_rollover=food_silo, food_remaining_today=food_remaining_today
     )
+
+
+def load_dashboard(today, month=None, target_daily=350.0):
+    """Load fresh data with one shared read connection and no persistent cache."""
+    update_food_silo(today, [], target_daily)
+    with dashboard_reads():
+        month_now = get_current_cycle_month(today)
+        receipt_dates = get_pocket_money_dates(today)
+        options = receipt_dates or [month_now]
+        month = month if month in options else month_now
+        return dict(month=month, month_now=month_now, receipt_dates=receipt_dates,
+                    month_options=options, credits=get_received_credits(today),
+                    shares=get_splits(), metrics=compute_metrics(month, today, target_daily),
+                    unparsed=get_unparsed())

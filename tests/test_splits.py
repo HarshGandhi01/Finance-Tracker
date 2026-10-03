@@ -174,6 +174,13 @@ class SplitDashboardTests(unittest.TestCase):
                         self.assertEqual(credits_read.call_count, 1)
                     transactions = db.get_transactions(str(today)[:7])
                     self.assertEqual(len([b for b in app.button if b.label == 'Delete']), len(transactions))
+                    for i in range(8):
+                        db.add_transaction(today, f'Extra {i}', 10)
+                    app.run()
+                    self.assertEqual(len([b for b in app.button if b.label == 'Delete']), 25)
+                    next(s for s in app.selectbox if s.label == 'Transaction page').set_value(2).run()
+                    self.assertEqual(list(app.exception), [])
+                    self.assertEqual(len([b for b in app.button if b.label == 'Delete']), 6)
                 finally:
                     cached = sys.modules.pop('_finance_tracker_dashboard_db', None)
                     if cached:

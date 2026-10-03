@@ -156,6 +156,54 @@ def repayment_editor(shares, received_credits, today):
                         st.error(str(exc))
 
 
+
+
+@st.fragment
+def transaction_list(txs, shares_by_tx, month):
+    st.markdown('<div class="section-title">Transactions</div>', unsafe_allow_html=True)
+
+    if not txs:
+        st.info("No entries this cycle.")
+    else:
+        sorted_txs = sorted(txs, key=lambda x: x["date"], reverse=True)
+        cat_options = list(db.CATEGORIES) + sorted({t["category"] for t in sorted_txs if t["category"] not in db.CATEGORIES})
+
+        page_size = 25
+        page_count = (len(sorted_txs) + page_size - 1) // page_size
+        page = 1
+        if page_count > 1:
+            page = st.selectbox("Transaction page", range(1, page_count + 1), key=f"tx_page_{month}")
+        start = (page - 1) * page_size
+        st.caption(f"Showing {start + 1}–{min(start + page_size, len(sorted_txs))} of {len(sorted_txs)} transactions")
+        for t in sorted_txs[start:start + page_size]:
+            dt = pd.to_datetime(t["date"], errors="coerce")
+            date_str = dt.strftime("%d %b") if pd.notna(dt) else t["date"]
+            sign = "+" if t["direction"] == "credit" else "-"
+            amt_class = "tx-credit" if t["direction"] == "credit" else "tx-debit"
+            amt_str = f'{sign}{inr(t["amount"], 2)}'
+
+            col1, col2 = st.columns([10, 1], vertical_alignment="center")
+            with col1:
+                st.markdown(
+                    f"""
+                    <div class="tx-row">
+                      <div class="tx-date">{date_str}</div>
+                      <div class="tx-merchant">{str(t["merchant"])}</div>
+                      <div class="tx-category">{t["category"]}</div>
+                      <div class="tx-amount {amt_class}">{amt_str}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with col1:
+                if t['personal_amount'] != t['amount']:
+                    st.caption(f"Your share {inr(t['personal_amount'], 2)} · Others' shares {inr(t['amount'] - t['personal_amount'], 2)}")
+                if t['is_repayment']:
+                    st.caption("Split repayment")
+            with col2:
+                transaction_editor(t, cat_options, shares_by_tx.get(t['id'], []))
+
+
 # ---------------------------------------------------------------- top bar
 today = db.today_ist()
 
@@ -163,16 +211,12 @@ def _shift_month(d: date, delta: int) -> str:
     idx = d.year * 12 + (d.month - 1) + delta
     return f"{idx // 12}-{idx % 12 + 1:02d}"
 
-month_now = db.get_current_cycle_month(today)
-try:
-    db.update_food_silo(today, [], TARGET_DAILY)
-except AttributeError:
-    # This handles cases where the deployed version of db.py
-    # might be out of sync with the app.py during a push.
-    pass
-
-receipt_dates = db.get_pocket_money_dates(today)
-month_options = receipt_dates or [month_now]
+snapshot = db.load_dashboard(today, st.session_state.get('budget_cycle'), TARGET_DAILY)
+month_now = snapshot['month_now']
+receipt_dates = snapshot['receipt_dates']
+month_options = snapshot['month_options']
+if st.session_state.get('budget_cycle') not in month_options:
+    st.session_state['budget_cycle'] = snapshot['month']
 
 col_nav1, col_nav2 = st.columns([3, 1], vertical_alignment="center")
 with col_nav1:
@@ -180,10 +224,10 @@ with col_nav1:
 with col_nav2:
     month = st.selectbox("Budget cycle", options=month_options, index=0,
                          format_func=lambda key: f"From {key}" if len(key) == 10 else key,
-                         label_visibility="collapsed")
+                         label_visibility="collapsed", key="budget_cycle")
 
-received_credits = db.get_received_credits(today)
-shares = db.get_splits()
+received_credits = snapshot['credits']
+shares = snapshot['shares']
 shares_by_tx = {}
 for share in shares:
     shares_by_tx.setdefault(share["transaction_id"], []).append(share)
@@ -210,7 +254,7 @@ with st.expander("Pocket-money cycle", expanded=not receipt_dates):
         st.info("No pocket-money receipt marked yet. Showing the existing monthly budget until you select one.")
 
 # ---------------------------------------------------------------- data
-m = db.compute_metrics(month, today, TARGET_DAILY)
+m = snapshot['metrics']
 st.caption(f"Cycle started {m['cycle_start']:%d %b %Y} · "
            f"{'Estimated through' if month == month_now and receipt_dates else 'Through'} "
            f"{m['cycle_end']:%d %b %Y} · {m['days_remaining']} days remaining")
@@ -351,42 +395,7 @@ else:
 repayment_editor(shares, received_credits, today)
 
 # ---------------------------------------------------------------- ledger
-st.markdown('<div class="section-title">Transactions</div>', unsafe_allow_html=True)
-
-if not txs:
-    st.info("No entries this cycle.")
-else:
-    sorted_txs = sorted(txs, key=lambda x: x["date"], reverse=True)
-    cat_options = list(db.CATEGORIES) + sorted({t["category"] for t in sorted_txs if t["category"] not in db.CATEGORIES})
-
-    # Render transaction rows with inline edit button
-    for t in sorted_txs:
-        dt = pd.to_datetime(t["date"], errors="coerce")
-        date_str = dt.strftime("%d %b") if pd.notna(dt) else t["date"]
-        sign = "+" if t["direction"] == "credit" else "-"
-        amt_class = "tx-credit" if t["direction"] == "credit" else "tx-debit"
-        amt_str = f'{sign}{inr(t["amount"], 2)}'
-
-        col1, col2 = st.columns([10, 1], vertical_alignment="center")
-        with col1:
-            st.markdown(
-                f"""
-                <div class="tx-row">
-                  <div class="tx-date">{date_str}</div>
-                  <div class="tx-merchant">{str(t["merchant"])}</div>
-                  <div class="tx-category">{t["category"]}</div>
-                  <div class="tx-amount {amt_class}">{amt_str}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with col1:
-            if t['personal_amount'] != t['amount']:
-                st.caption(f"Your share {inr(t['personal_amount'], 2)} · Others' shares {inr(t['amount'] - t['personal_amount'], 2)}")
-            if t['is_repayment']:
-                st.caption("Split repayment")
-        with col2:
-            transaction_editor(t, cat_options, shares_by_tx.get(t['id'], []))
+transaction_list(txs, shares_by_tx, month)
 
 # ---------------------------------------------------------------- admin
 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
@@ -413,7 +422,7 @@ with st.expander("Settings & maintenance"):
         st.success("Food silo has been reset!")
         st.rerun()
 
-    unparsed = db.get_unparsed()
+    unparsed = snapshot['unparsed']
     if unparsed:
         st.divider()
         st.markdown("**Unread bank texts**")
