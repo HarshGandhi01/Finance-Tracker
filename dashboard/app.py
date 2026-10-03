@@ -317,7 +317,10 @@ with hero_right:
           <div class="hud-value-md {food_tone}">{inr(food_remaining)}</div>
           <div class="hud-text">{status_text}</div>
           <div class="bar"><span class="bar-fill {food_tone}" style="width:{bar_pct:.0f}%"></span></div>
-          <div class="bar-cap"><span>{inr(food_spent)} SPENT</span><span>{inr(TARGET_DAILY)} LIMIT</span></div>
+          <div class="bar-cap" style="display: flex; justify-content: space-between; gap: 2rem;">
+            <span>{inr(food_spent)} SPENT</span>
+            <span>{inr(TARGET_DAILY)} LIMIT</span>
+          </div>
           <div class="silo" style="margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--line); display:flex; justify-content:space-between; color:var(--mute); font-size:0.8rem;">
             <span>Food Silo Reserves</span><b class="hud-value">{inr(food_silo)}</b>
           </div>

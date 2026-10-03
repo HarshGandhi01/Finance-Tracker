@@ -1,195 +1,207 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;700;800&display=swap");
 
 :root {
-  /* Palette: The Void & Signal */
-  --bg: #0D0D0D;            /* Obsidian */
-  --surface: #141418;       /* Hardware Surface */
-  --line: #2A2A2E;          /* Hairline border */
-  --line-bright: #4F4F55;   /* Active border */
+  /* Midnight Galaxy - High Saturation Version */
+  --bg: #0B0A12;            /* Deep Space */
+  --surface: #1B182B;       /* Cosmic Surface */
+  --line: #4A3B6D;          /* Mystical Border */
+  --line-bright: #8A7BCE;   /* Lavender Glow */
 
-  /* Signal Colors with Glow */
-  --signal-mint: #00FF9F;
-  --glow-mint: rgba(0, 255, 159, 0.3);
+  /* Signal Colors - Ultra Neon */
+  --signal-mint: #00FFC3;
+  --glow-mint: rgba(0, 255, 195, 0.5);
   --signal-yellow: #FDFD96;
-  --glow-yellow: rgba(253, 253, 150, 0.3);
-  --signal-red: #FF3131;
-  --glow-red: rgba(255, 49, 49, 0.3);
+  --glow-yellow: rgba(253, 253, 150, 0.5);
+  --signal-red: #FF4D6D;
+  --glow-red: rgba(255, 77, 109, 0.5);
 
-  --text: #F2F2F4;
-  --mute: #7A7A80;
-  --mute-dark: #444448;
+  --text: #E6E6FA;           /* Silver Lavender */
+  --mute: #A490C2;           /* Soft Lavender */
+  --mute-dark: #5A4D7A;
 
-  --radius-hard: 2px;
+  --radius-hard: 4px;
   --border-weight: 1px;
 
-  /* Typography Upgrade */
-  --font-display: 'JetBrains Mono', monospace;
-  --font-body: 'Space Grotesk', sans-serif;    /* Swapped Public Sans for Space Grotesk */
+  /* Typography - THE UPGRADE */
+  --font-display: 'Syne', 'JetBrains Mono', monospace; /* Syne is high-impact, aggressive */
+  --font-body: 'Space Grotesk', sans-serif;
 }
 
-/* ---------- Global Theme Force ---------- */
+/* ---------- Force Theme ---------- */
 html, body, .stApp, [data-testid="stAppViewContainer"] {
     background: var(--bg) !important;
     color: var(--text) !important;
     font-family: var(--font-body);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+}
+
+.stApp {
+    background: radial-gradient(circle at 50% 50%, #1B182B 0%, #0B0A12 100%) !important;
 }
 
 [data-testid="stHeader"], [data-testid="stToolbar"] { background: transparent !important; }
-.stApp { background: var(--bg) !important; }
-[data-testid="stVerticalBlock"] { gap: 1.5rem !important; }
 
-/* The "Scanline" effect for that HUD feel */
+/* The "Space Dust" Scanline */
 .stApp::after {
   content: " ";
   display: block;
   position: fixed;
   top: 0; left: 0; bottom: 0; right: 0;
-  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%),
-              linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.2) 50%),
+              radial-gradient(circle at 50% 50%, rgba(106, 91, 158, 0.1) 0%, transparent 80%);
   z-index: 9999;
-  background-size: 100% 4px, 3px 100%;
+  background-size: 100% 4px, 100% 100%;
   pointer-events: none;
-  opacity: 0.3;
+  opacity: 0.5;
 }
 
 /* ---------- Typography ---------- */
 .nav-title {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.8rem;
-  letter-spacing: 0.1em;
+  font-weight: 800;
+  font-size: 2.2rem;
+  letter-spacing: -0.02em;
   color: var(--signal-mint);
   text-transform: uppercase;
-  text-shadow: 0 0 10px var(--glow-mint);
+  text-shadow: 0 0 20px var(--glow-mint);
 }
 
 .section-title {
-  font-family: var(--font-body);
+  font-family: var(--font-display);
   font-weight: 700;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--mute);
-  margin: 3rem 0 1rem;
+  margin: 3rem 0 1.5rem;
   border-left: 4px solid var(--signal-mint);
   padding-left: 12px;
 }
 
 /* ---------- Modular HUD Panels ---------- */
 .hud-panel {
-  background: var(--surface);
+  background: rgba(27, 24, 43, 0.8);
+  backdrop-filter: blur(10px);
   border: var(--border-weight) solid var(--line);
   border-radius: var(--radius-hard);
-  padding: 1.5rem;
+  padding: 2.5rem;
   position: relative;
   z-index: 1;
-  box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
-  overflow: hidden;
-  transition: border-color 0.2s ease;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.6), inset 0 0 15px rgba(106, 91, 158, 0.2);
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .hud-panel:hover {
   border-color: var(--line-bright);
+  transform: translateY(-5px);
+  box-shadow: 0 25px 60px rgba(0,0,0,0.7), inset 0 0 25px rgba(106, 91, 158, 0.3);
 }
 
 .hud-label {
   font-family: var(--font-body);
   font-size: 0.65rem;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.2em;
   color: var(--mute);
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
   display: block;
-  opacity: 0.8;
 }
 
 .hud-value {
   font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text);
 }
 
 .hud-value-lg {
-  font-size: clamp(3rem, 10vw, 5rem);
-  line-height: 1;
-  letter-spacing: -0.04em;
+  font-size: clamp(4rem, 15vw, 7rem);
+  line-height: 0.9;
+  letter-spacing: -0.05em;
   margin: 0.5rem 0;
 }
 
 .hud-value-md {
-  font-size: 2rem;
-  line-height: 1.2;
+  font-size: 3rem;
+  line-height: 1;
 }
 
-/* ---------- Signal-State Overlays ---------- */
+/* ---------- Signal States ---------- */
 .status-comfortable {
     color: var(--signal-mint) !important;
-    text-shadow: 0 0 15px var(--glow-mint);
+    text-shadow: 0 0 25px var(--glow-mint);
 }
 .status-caution {
     color: var(--signal-yellow) !important;
-    text-shadow: 0 0 15px var(--glow-yellow);
+    text-shadow: 0 0 25px var(--glow-yellow);
 }
 .status-cooked {
     color: var(--signal-red) !important;
-    text-shadow: 0 0 15px var(--glow-red);
+    text-shadow: 0 0 25px var(--glow-red);
 }
 
 .bar {
-  height: 8px;
+  height: 12px;
   background: #000;
   border: 1px solid var(--line);
   border-radius: var(--radius-hard);
-  margin: 1.5rem 0 0.6rem;
+  margin: 2.5rem 0 1.2rem;
   overflow: hidden;
 }
 .bar-fill {
   display: block;
   height: 100%;
   background: var(--signal-mint);
-  transition: width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .bar-fill.status-caution { background: var(--signal-yellow); }
 .bar-fill.status-cooked {
     background: var(--signal-red);
-    box-shadow: 0 0 10px var(--signal-red);
+    box-shadow: 0 0 20px var(--signal-red);
+}
+.bar-cap {
+  display: flex;
+  justify-content: space-between;
+  color: var(--mute);
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
 }
 
-/* ---------- Tactical Readouts (Stat Tiles) ---------- */
+/* ---------- Tactical Readouts ---------- */
 .tiles {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
+  gap: 2rem;
 }
 .hud-tile {
   background: var(--surface);
   border: var(--border-weight) solid var(--line);
-  border-left: 4px solid var(--line);
+  border-left: 6px solid var(--line);
   border-radius: var(--radius-hard);
-  padding: 1.2rem;
-  position: relative;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
 }
 .hud-tile:hover {
   border-color: var(--line-bright);
-  background: #1d1d22;
+  background: #221e35;
+  transform: scale(1.02);
 }
 .hud-tile .tile-label {
   color: var(--mute);
   font-size: 0.7rem;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 .hud-tile .tile-value {
   font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  font-size: 1.6rem;
+  font-weight: 800;
+  font-size: 2rem;
   color: var(--text);
 }
 .hud-tile.lead {
@@ -197,56 +209,57 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
 }
 .hud-tile.lead .tile-value {
   color: var(--signal-mint);
-  text-shadow: 0 0 10px var(--glow-mint);
+  text-shadow: 0 0 15px var(--glow-mint);
 }
 
 /* ---------- Terminal Ledger ---------- */
 .tx-row {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
+  gap: 1.5rem;
+  padding: 1rem 1.5rem;
   background: var(--surface);
   border: var(--border-weight) solid var(--line);
   border-radius: var(--radius-hard);
-  margin-bottom: 0.5rem;
-  transition: all 0.1s ease;
+  margin-bottom: 0.8rem;
+  transition: all 0.2s ease;
 }
 .tx-row:hover {
-  background: #1d1d22;
+  background: #221e35;
   border-color: var(--line-bright);
+  transform: translateX(5px);
 }
 .tx-date {
   color: var(--mute);
   font-family: var(--font-display);
-  font-size: 0.8rem;
-  min-width: 4.5rem;
+  font-size: 0.9rem;
+  min-width: 5.5rem;
 }
 .tx-merchant {
   flex: 1;
-  font-weight: 500;
+  font-weight: 600;
   color: #fff;
 }
 .tx-category {
   font-family: var(--font-body);
-  font-size: 0.6rem;
+  font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
   color: var(--text);
   background: #000;
   border: 1px solid var(--line);
-  padding: 0.2rem 0.5rem;
+  padding: 0.3rem 0.7rem;
   border-radius: var(--radius-hard);
 }
 .tx-amount {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.1rem;
-  min-width: 6.5rem;
+  font-weight: 800;
+  font-size: 1.3rem;
+  min-width: 7.5rem;
   text-align: right;
 }
 .tx-debit { color: var(--text); }
-.tx-credit { color: var(--signal-mint); text-shadow: 0 0 10px var(--glow-mint); }
+.tx-credit { color: var(--signal-mint); text-shadow: 0 0 15px var(--glow-mint); }
 
 /* ---------- Component Overrides ---------- */
 [data-baseweb="select"] > div, [data-baseweb="input"] {
@@ -262,15 +275,17 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
   color: var(--text);
   font-family: var(--font-display);
   text-transform: uppercase;
-  font-size: 0.75rem;
+  font-weight: 700;
+  font-size: 0.8rem;
+  padding: 0.5rem 1.5rem;
 }
 .stButton > button:hover {
   border-color: var(--signal-mint);
   color: var(--signal-mint);
-  box-shadow: 0 0 10px var(--glow-mint);
+  box-shadow: 0 0 15px var(--glow-mint);
 }
 
 @media (max-width: 720px) {
   .tiles { grid-template-columns: 1fr; }
-  .hud-value-lg { font-size: 3rem; }
+  .hud-value-lg { font-size: 3.5rem; }
 }
