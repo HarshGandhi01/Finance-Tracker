@@ -8,15 +8,15 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
 
-BG = "#0A0A0C"
+BG = "#0D0D0D"
 INK = "#F2F2F4"
-MUTED = "#8B8B94"
-LINE = "#232329"
-FONT_DISPLAY = "Bricolage Grotesque, IBM Plex Sans, sans-serif"
-FONT_BODY = "IBM Plex Sans, system-ui, sans-serif"
+MUTED = "#66666B"
+LINE = "#2A2A2E"
+FONT_DISPLAY = "JetBrains Mono, monospace"
+FONT_BODY = "Public Sans, sans-serif"
 
-# First (largest) category gets the accent; the rest cycle through distinct, low-saturation hues.
-SERIES = ["#7C83FF", "#3DBE8B", "#E8A93A", "#F0584F", "#4FB7E5", "#B28CFF", "#8B8B94"]
+# Signal-first palette for the HUD
+SERIES = ["#00FF9F", "#FDFD96", "#FF3131", "#7C83FF", "#4FB7E5", "#B28CFF", "#8B8B94"]
 
 pio.templates["cooked_dark"] = go.layout.Template(
     layout=go.Layout(
@@ -24,7 +24,7 @@ pio.templates["cooked_dark"] = go.layout.Template(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         colorway=SERIES,
-        hoverlabel=dict(bgcolor="#1C222C", bordercolor=LINE, font=dict(family=FONT_BODY, color=INK)),
+        hoverlabel=dict(bgcolor="#1A1A1E", bordercolor=LINE, font=dict(family=FONT_BODY, color=INK)),
     )
 )
 pio.templates.default = "cooked_dark"

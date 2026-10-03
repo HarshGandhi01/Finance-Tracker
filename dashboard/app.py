@@ -160,7 +160,7 @@ def repayment_editor(shares, received_credits, today):
 
 @st.fragment
 def transaction_list(txs, shares_by_tx, month):
-    st.markdown('<div class="section-title">Transactions</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">SYSTEM_LEDGER</div>', unsafe_allow_html=True)
 
     if not txs:
         st.info("No entries this cycle.")
@@ -297,24 +297,27 @@ hero_left, hero_right = st.columns([1, 1.25], gap="large", vertical_alignment="c
 with hero_left:
     st.markdown(
         f"""
-        <div class="clock">
-          <div class="clock-label">Days until broke</div>
-          <div class="clock-value {clock_tone}">{days_left_label}</div>
-          <div class="clock-sub">{inr(balance)} left, {rate_description}</div>
+        <div class="hud-panel">
+          <div class="hud-label">SYSTEM_DEPLETION_ESTIMATE</div>
+          <div class="hud-value-lg {clock_tone}">{days_left_label}</div>
+          <div class="hud-text" style="font-family:var(--font-display); font-size:0.8rem;">{inr(balance)} REMAINING · {rate_description.upper()}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 with hero_right:
+    # --- Hero Right (Food Status) ---
     st.markdown(
         f"""
-        <div class="food-card">
-          <div class="food-label">Left for food today</div>
-          <div class="food-value {food_tone}">{inr(food_remaining)}</div>
-          <div class="food-text">{status_text}</div>
-          <div class="bar"><span class="{food_tone}" style="width:{bar_pct:.0f}%"></span></div>
-          <div class="bar-cap"><span>{inr(food_spent)} spent</span><span>{inr(TARGET_DAILY)} target</span></div>
-          <div class="silo"><span>Food silo, saved for overspending</span><b>{inr(food_silo)}</b></div>
+        <div class="hud-panel">
+          <div class="hud-label">NUTRIENT_ALLOCATION_TODAY</div>
+          <div class="hud-value-md {food_tone}">{inr(food_remaining)}</div>
+          <div class="hud-text">{status_text}</div>
+          <div class="bar"><span class="bar-fill {food_tone}" style="width:{bar_pct:.0f}%"></span></div>
+          <div class="bar-cap"><span>{inr(food_spent)} SPENT</span><span>{inr(TARGET_DAILY)} LIMIT</span></div>
+          <div class="silo" style="margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--line); display:flex; justify-content:space-between; color:var(--mute); font-size:0.8rem;">
+            <span>FOOD_SILO_RESERVES</span><b class="hud-value">{inr(food_silo)}</b>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -330,11 +333,11 @@ tiles = [
     ("Safe to spend", inr(m["safe_to_spend"]), False),
 ]
 tiles_html = "".join(
-    f'<div class="tile{" lead" if lead else ""}"><div class="tile-label">{label}</div>'
+    f'<div class="hud-tile{" lead" if lead else ""}"><div class="tile-label">{label}</div>'
     f'<div class="tile-value">{value}</div></div>'
     for label, value, lead in tiles
 )
-st.markdown(f'<div class="section-title">This cycle</div><div class="tiles">{tiles_html}</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="section-title">CYCLE_READOUT</div><div class="tiles">{tiles_html}</div>', unsafe_allow_html=True)
 with st.expander('How these numbers are calculated'):
     st.write(f"Daily allowance: {inr(balance, 2)} current balance ÷ "
              f"{m['days_remaining']} days left = {inr(m['daily_allowance'], 2)} per day.")
@@ -359,7 +362,7 @@ with st.expander('How these numbers are calculated'):
 
 # ---------------------------------------------------------------- breakdown charts
 txs = m["txs"]
-st.markdown('<div class="section-title">Where it went</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">RESOURCE_DISTRIBUTION</div>', unsafe_allow_html=True)
 
 if not txs:
     st.info("No spending data to analyze this cycle.")

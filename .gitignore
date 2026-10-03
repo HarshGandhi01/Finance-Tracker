@@ -17,7 +17,28 @@ secrets.py
 *.key
 CLAUDE-SECURITY-*/
 
+#Python
+__pycache__/
+*.py[cod]
+*$py.class
+env/
+venv/
+.env
 
+/Skills
+
+# Database
+*.db
+*.sqlite
+
+# IDEs/Tools
+.vscode/
+.idea/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.d
 # --- DATABASE ---
 # Local SQLite databases
 *.db
