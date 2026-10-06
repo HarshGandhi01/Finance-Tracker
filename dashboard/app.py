@@ -193,10 +193,10 @@ def transaction_list(txs, shares_by_tx, month):
         ledger_html = f"""
         <div class="ledger-container">
             <div class="ledger-header">
-                <span>DATE</span>
-                <span>MERCHANT</span>
-                <span>CAT</span>
-                <span style="text-align:right">AMOUNT</span>
+                <span class="log-prefix">DATE</span>
+                <span class="log-merchant">MERCHANT</span>
+                <span class="log-category">CAT</span>
+                <span class="log-amount" style="text-align:right">AMOUNT</span>
             </div>
         """
 
