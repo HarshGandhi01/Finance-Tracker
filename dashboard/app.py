@@ -214,11 +214,11 @@ def transaction_list(txs, shares_by_tx, month):
         ledger_html += "</div>"
         st.markdown(ledger_html, unsafe_allow_html=True)
 
-        # Integrated editor - place editor directly under each row in the loop
-        # To keep the terminal look, we use a small, compact container
-        for t in sorted_txs[start:start + page_size]:
-            with st.expander(f"MOD_ENTRY: {t['merchant']} ({t['date']})", expanded=False):
-                transaction_editor(t, cat_options, shares_by_tx.get(t['id'], []))
+        # We keep the editor in a separate section but make it much more compact
+        with st.expander("🛠️ SYSTEM_MODS (Edit Transactions)", expanded=False):
+            for t in sorted_txs[start:start + page_size]:
+                with st.popover(f"MOD: {t['merchant']} ({t['date']})"):
+                    transaction_editor(t, cat_options, shares_by_tx.get(t['id'], []))
 
 
 # ---------------------------------------------------------------- top bar
