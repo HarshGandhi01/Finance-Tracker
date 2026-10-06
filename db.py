@@ -612,6 +612,9 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
         food_remaining_today = target_daily - today_food_spend
     else:
         food_remaining_today = (target_daily + food_silo) - today_food_spend
+        # ponytail: update silo immediately when overspending today
+        new_silo = food_silo - (today_food_spend - target_daily)
+        set_setting("food_silo_balance", new_silo)
 
     food_balance = balance
     safe_per_meal = daily_allowance / 2
