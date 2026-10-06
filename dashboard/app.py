@@ -190,15 +190,11 @@ def transaction_list(txs, shares_by_tx, month):
         st.caption(f"Showing {start + 1}–{min(start + page_size, len(sorted_txs))} of {len(sorted_txs)} transactions")
 
         # Ledger wrapper
-        ledger_html = f"""
-        <div class="ledger-container">
-            <div class="ledger-header">
-                <span class="log-prefix">DATE</span>
-                <span class="log-merchant">MERCHANT</span>
-                <span class="log-category">CAT</span>
-                <span class="log-amount" style="text-align:right">AMOUNT</span>
-            </div>
-        """
+        ledger_html = '<div class="ledger-container"><div class="ledger-header">'
+        ledger_html += '<span class="log-prefix">DATE</span>'
+        ledger_html += '<span class="log-merchant">MERCHANT</span>'
+        ledger_html += '<span class="log-category">CAT</span>'
+        ledger_html += '<span class="log-amount" style="text-align:right">AMOUNT</span></div>'
 
         for t in sorted_txs[start:start + page_size]:
             dt = pd.to_datetime(t["date"], errors="coerce")
@@ -208,14 +204,12 @@ def transaction_list(txs, shares_by_tx, month):
             amt_class = "credit" if t["direction"] == "credit" else "debit"
             amt_str = f'{sign}{inr(t["amount"], 2)}'
 
-            ledger_html += f"""
-            <div class="tx-log-row">
-                <span class="log-prefix">{date_str}</span>
-                <span class="log-merchant">{str(t["merchant"])}</span>
-                <span class="log-category">{t["category"]}</span>
-                <span class="log-amount {amt_class}">{amt_str}</span>
-            </div>
-            """
+            ledger_html += f'<div class="tx-log-row">'
+            ledger_html += f'<span class="log-prefix">{date_str}</span>'
+            ledger_html += f'<span class="log-merchant">{str(t["merchant"])}</span>'
+            ledger_html += f'<span class="log-category">{t["category"]}</span>'
+            ledger_html += f'<span class="log-amount {amt_class}">{amt_str}</span>'
+            ledger_html += '</div>'
 
         ledger_html += "</div>"
         st.markdown(ledger_html, unsafe_allow_html=True)
