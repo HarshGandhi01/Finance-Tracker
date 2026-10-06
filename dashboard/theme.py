@@ -8,15 +8,15 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
 
-BG = "#0B0A12"
-INK = "#E6E6FA"
-MUTED = "#A490C2"
-LINE = "#3D365C"
-FONT_DISPLAY = "JetBrains Mono, monospace"
-FONT_BODY = "Space Grotesk, sans-serif"
+BG = "#101416"
+INK = "#EDF0F2"
+MUTED = "#A1ADB4"
+LINE = "#303A40"
+FONT_DISPLAY = "Arial, sans-serif"
+FONT_BODY = "Arial, sans-serif"
 
-# Midnight Galaxy Signal-Hybrid Palette
-SERIES = ["#00FFC3", "#FDFD96", "#FF4D6D", "#6A5B9E", "#4A4E8F", "#A490C2", "#3D365C"]
+# Restrained financial workspace palette
+SERIES = ["#83BDA3", "#82988D", "#B7C9BE", "#4E7461", "#98AAA0", "#A1ADB4", "#303A40"]
 
 pio.templates["cooked_dark"] = go.layout.Template(
     layout=go.Layout(
@@ -24,7 +24,7 @@ pio.templates["cooked_dark"] = go.layout.Template(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         colorway=SERIES,
-        hoverlabel=dict(bgcolor="#1B182B", bordercolor=LINE, font=dict(family=FONT_BODY, color=INK)),
+        hoverlabel=dict(bgcolor="#191F22", bordercolor=LINE, font=dict(family=FONT_BODY, color=INK)),
     )
 )
 pio.templates.default = "cooked_dark"

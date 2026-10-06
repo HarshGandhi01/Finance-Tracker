@@ -233,8 +233,11 @@ def get_received_credits(today: date) -> list:
 
 
 def add_transaction(date_, merchant, amount, direction="debit", category="Food",
-                    is_peer=False, peer_name=None, status="settled", upi_ref=None, splits=None) -> bool:
+                    is_peer=False, peer_name=None, status="settled", upi_ref=None, splits=None,
+                    apply_merchant_rule=True) -> bool:
     upi_ref = (upi_ref or "").strip() or None
+    if direction == 'debit' and apply_merchant_rule:
+        category = get_merchant_category(merchant) or category
     try:
         with conn() as c:
             result = c.execute(text(
@@ -423,20 +426,79 @@ def set_food_silo_zero():
     set_setting("food_silo_last_update", str(today_ist()))
 
 def get_merchant_category(merchant: str) -> str | None:
-    mapping = get_setting("merchant_category_map", "{}")
+    return get_merchant_categories().get(normalize_merchant(merchant))
+
+
+def normalize_merchant(merchant):
+    return ' '.join(merchant.split()).casefold()
+
+
+def _merchant_mapping(raw):
     try:
-        return json.loads(mapping).get(merchant.strip())
-    except json.JSONDecodeError:
-        return None
+        mapping = json.loads(raw)
+        if not isinstance(mapping, dict):
+            return {}
+        return {normalize_merchant(k): v for k, v in mapping.items()
+                if isinstance(k, str) and v in CATEGORIES}
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def get_merchant_categories():
+    return _merchant_mapping(get_setting('merchant_category_map', '{}'))
+
+
+def _save_merchant_rule(c, merchants, category):
+    # Lock the settings row before changing the map to avoid lost concurrent edits.
+    c.execute(text("INSERT INTO settings(key,value) VALUES ('merchant_category_map','{}') "
+                   "ON CONFLICT(key) DO NOTHING"))
+    c.execute(text("UPDATE settings SET value=value WHERE key='merchant_category_map'"))
+    mapping = _merchant_mapping(_rows(c, "SELECT value FROM settings WHERE key='merchant_category_map'")[0]['value'])
+    for merchant in merchants:
+        key = normalize_merchant(merchant)
+        if not key:
+            raise ValueError('Enter a vendor or person name.')
+        if category is None:
+            mapping.pop(key, None)
+        else:
+            if category not in CATEGORIES:
+                raise ValueError('Choose a valid category.')
+            mapping[key] = category
+    c.execute(text("UPDATE settings SET value=:v WHERE key='merchant_category_map'"),
+              {'v': json.dumps(mapping)})
 
 def set_merchant_category(merchant: str, category: str):
-    mapping_str = get_setting("merchant_category_map", "{}")
-    try:
-        mapping = json.loads(mapping_str)
-    except json.JSONDecodeError:
-        mapping = {}
-    mapping[merchant.strip()] = category
-    set_setting("merchant_category_map", json.dumps(mapping))
+    with conn() as c:
+        _save_merchant_rule(c, [merchant], category)
+
+
+def edit_transaction(tx_id, merchant, category, remember=None):
+    """Edit a ledger row and optionally save/remove its future debit rule atomically."""
+    merchant = ' '.join(merchant.split())
+    if not merchant:
+        raise ValueError('Enter a vendor or person name.')
+    if category not in CATEGORIES:
+        raise ValueError('Choose a valid category.')
+    with conn() as c:
+        tx = _lock_transaction(c, tx_id)
+        if category == 'Pocket Money' and _rows(c, 'SELECT 1 FROM split_repayments WHERE credit_id=:i', i=tx_id):
+            raise ValueError('A repayment cannot be pocket money.')
+        if remember is not None and tx['direction'] != 'debit':
+            raise ValueError('Vendor rules apply to payments, not received credits.')
+        if tx['category'] != category and tx['direction'] == 'debit':
+            settings = {r['key']: r['value'] for r in _rows(c, 'SELECT key,value FROM settings')}
+            if tx['date'] < settings.get('food_silo_last_update', ''):
+                others = _rows(c, 'SELECT COALESCE(SUM(cents),0) AS n FROM expense_shares WHERE transaction_id=:i', i=tx_id)[0]['n']
+                personal = tx['amount'] - others / 100 if others or not tx['is_peer'] else 0
+                correction = personal * (int(tx['category'] == 'Food') - int(category == 'Food'))
+                if correction:
+                    value = float(settings.get('food_silo_balance', 0)) + correction
+                    c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
+                                   "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {'v': str(value)})
+        c.execute(text('UPDATE transactions SET merchant=:m,category=:cat WHERE id=:i'),
+                  {'i': tx_id, 'm': merchant, 'cat': category})
+        if remember is not None:
+            _save_merchant_rule(c, [tx['merchant'], merchant], category if remember else None)
 
 
 def current_balance(month: str, month_txs: list, settings: dict | None = None,
@@ -666,4 +728,4 @@ def load_dashboard(today, month=None, target_daily=350.0):
         return dict(month=month, month_now=month_now, receipt_dates=receipt_dates,
                     month_options=options, credits=get_received_credits(today),
                     shares=get_splits(), metrics=compute_metrics(month, today, target_daily),
-                    unparsed=get_unparsed())
+                    unparsed=get_unparsed(), merchant_categories=get_merchant_categories())

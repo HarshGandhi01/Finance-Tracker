@@ -2,6 +2,7 @@
 import os
 import sys
 from datetime import date
+from html import escape
 
 # Ensure repo root is on the path so 'import db' works on Vercel/Streamlit
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
@@ -10,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from database_loader import load_database
-from theme import apply_theme, inr, spending_donut, burn_rate_line
+from theme import apply_theme, inr, burn_rate_line
 
 db = load_database()
 
@@ -56,10 +57,39 @@ def split_fields(amount, key, existing=None):
 
 
 @st.fragment
-def transaction_editor(t, cat_options, existing_splits):
-    with st.popover("Edit", key=f"edit_{t['id']}", help="Edit or delete"):
+def transaction_editor(t, cat_options, existing_splits, rules):
+    with st.popover("Edit", key=f"edit_{t['id']}", help="Edit this transaction", width="stretch"):
+        st.subheader("Edit transaction")
+        merchant = st.text_input("Vendor or person", value=t['merchant'], key=f"merchant_{t['id']}")
+        new_cat = st.selectbox("Category", options=cat_options,
+                              index=cat_options.index(t['category']), key=f"cat_{t['id']}")
+        remember = None
         if t['direction'] == 'debit':
-            st.caption(f"Your share {inr(t['personal_amount'], 2)} · Paid {inr(t['amount'], 2)}")
+            rule = rules.get(db.normalize_merchant(t['merchant']))
+            remember_checked = st.checkbox("Use for future payments to this vendor", value=bool(rule), key=f"remember_{t['id']}")
+            st.caption(f"Saved default: {rule}. Uncheck to remove it." if rule else "Matches this vendor name, ignoring case and extra spaces.")
+            if remember_checked or rule:
+                remember = remember_checked
+        col_save, col_del = st.columns([2, 1])
+        with col_save:
+            if st.button("Save changes", key=f"save_{t['id']}", type="primary", width="stretch"):
+                try:
+                    db.edit_transaction(t['id'], merchant, new_cat, remember)
+                    st.session_state['notice'] = 'Transaction updated. Vendor rule saved.' if remember else 'Transaction updated.'
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        with col_del:
+            if st.button("Delete", key=f"del_{t['id']}", width="stretch"):
+                try:
+                    db.delete_transaction(t['id'])
+                    st.session_state['notice'] = 'Transaction deleted.'
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        if t['direction'] == 'debit':
+            st.divider()
+            st.caption(f"Paid {inr(t['amount'], 2)} · Your share {inr(t['personal_amount'], 2)}")
             with st.container():
                 edited_splits = split_fields(t['amount'], t['id'], existing_splits)
             if st.button("Save split", key=f"save_split_{t['id']}", disabled=edited_splits is None):
@@ -73,32 +103,11 @@ def transaction_editor(t, cat_options, existing_splits):
             if st.button("Unlink repayment", key=f"unlink_{t['id']}"):
                 db.unlink_repayment(t['id'])
                 st.rerun()
-        new_cat = st.selectbox(
-            "Category", options=cat_options,
-            index=cat_options.index(t["category"]) if t["category"] in cat_options else 0,
-            key=f"cat_{t['id']}",
-        )
-        col_save, col_del = st.columns(2)
-        with col_save:
-            if st.button("Save", key=f"save_{t['id']}", use_container_width=True):
-                try:
-                    if new_cat != t["category"]:
-                        db.update_category(t["id"], new_cat)
-                    st.rerun()
-                except ValueError as exc:
-                    st.error(str(exc))
-        with col_del:
-            if st.button("Delete", key=f"del_{t['id']}", use_container_width=True):
-                try:
-                    db.delete_transaction(t["id"])
-                    st.rerun()
-                except ValueError as exc:
-                    st.error(str(exc))
 
 
 @st.fragment
 def manual_transaction_editor(today):
-    with st.popover("Add manual transaction", width="stretch"):
+    with st.popover("Add transaction", width="stretch"):
         m_date = st.date_input("Transaction date", value=today, max_value=today)
         m_merchant = st.text_input("Merchant", placeholder="e.g. Hungry")
 
@@ -119,7 +128,7 @@ def manual_transaction_editor(today):
         if st.button("Log transaction", width="stretch", disabled=manual_splits is None):
             if m_merchant and m_amount > 0:
                 try:
-                    if db.add_transaction(m_date, m_merchant, m_amount, direction=m_dir, category=m_cat, splits=manual_splits):
+                    if db.add_transaction(m_date, m_merchant, m_amount, direction=m_dir, category=m_cat, splits=manual_splits, apply_merchant_rule=False):
                         if auto_tag:
                             db.set_merchant_category(m_merchant, m_cat)
                         st.rerun()
@@ -133,7 +142,7 @@ def manual_transaction_editor(today):
 
 @st.fragment
 def repayment_editor(shares, received_credits, today):
-    with st.expander("Owed to me", expanded=True):
+    with st.expander("Owed to me", expanded=False):
         outstanding = [s for s in shares if s['date'] <= str(today) and s['cents'] - round(s['repaid'] * 100) > 0]
         st.metric("Outstanding across all cycles", inr(sum(s['cents'] / 100 - s['repaid'] for s in outstanding), 2))
         st.caption("Link repayments already in your records to avoid adding the money twice.")
@@ -172,53 +181,51 @@ def repayment_editor(shares, received_credits, today):
 
 
 @st.fragment
-def transaction_list(txs, shares_by_tx, month):
-    st.markdown('<div class="section-title">SYSTEM_LEDGER</div>', unsafe_allow_html=True)
-
-    if not txs:
-        st.info("No entries this cycle.")
-    else:
-        sorted_txs = sorted(txs, key=lambda x: x["date"], reverse=True)
-        cat_options = list(db.CATEGORIES) + sorted({t["category"] for t in sorted_txs if t["category"] not in db.CATEGORIES})
-
+def transaction_list(txs, shares_by_tx, month, rules):
+    with st.container(border=True, key='ledger'):
+        title, search, category = st.columns([2, 2, 1.2], vertical_alignment='center')
+        with title:
+            st.subheader('Transactions')
+        with search:
+            query = st.text_input('Search vendor or person', placeholder='Search vendor or person…', label_visibility='collapsed', key='ledger_search')
+        cat_options = list(db.CATEGORIES) + sorted({t['category'] for t in txs if t['category'] not in db.CATEGORIES})
+        with category:
+            selected = st.selectbox('Filter by category', ['All categories'] + cat_options, label_visibility='collapsed', key='ledger_category')
+        matches = [t for t in txs if query.casefold().strip() in t['merchant'].casefold()
+                   and (selected == 'All categories' or t['category'] == selected)]
+        sorted_txs = sorted(matches, key=lambda t: (t['date'], t['id']), reverse=True)
+        if not sorted_txs:
+            st.info('No transactions match your filters.' if txs else 'No transactions yet. Add your first payment to get started.')
+            return
         page_size = 25
         page_count = (len(sorted_txs) + page_size - 1) // page_size
-        page = 1
-        if page_count > 1:
-            page = st.selectbox("Transaction page", range(1, page_count + 1), key=f"tx_page_{month}")
+        page_key = f'tx_page_{month}'
+        if st.session_state.get(page_key, 1) > page_count:
+            st.session_state[page_key] = 1
+        page = st.selectbox('Transaction page', range(1, page_count + 1), key=page_key) if page_count > 1 else 1
         start = (page - 1) * page_size
-        st.caption(f"Showing {start + 1}–{min(start + page_size, len(sorted_txs))} of {len(sorted_txs)} transactions")
-
-        # Ledger wrapper
-        ledger_html = '<div class="ledger-container"><div class="ledger-header">'
-        ledger_html += '<span class="log-prefix">DATE</span>'
-        ledger_html += '<span class="log-merchant">MERCHANT</span>'
-        ledger_html += '<span class="log-category">CAT</span>'
-        ledger_html += '<span class="log-amount" style="text-align:right">AMOUNT</span></div>'
-
+        st.markdown('<div class="ledger-head"><span>Date</span><span>Vendor or person</span><span>Category</span><span>Amount</span><span></span></div>', unsafe_allow_html=True)
         for t in sorted_txs[start:start + page_size]:
-            dt = pd.to_datetime(t["date"], errors="coerce")
-            date_str = dt.strftime("%d %b") if pd.notna(dt) else t["date"]
-
-            sign = "+" if t["direction"] == "credit" else "-"
-            amt_class = "credit" if t["direction"] == "credit" else "debit"
-            amt_str = f'{sign}{inr(t["amount"], 2)}'
-
-            ledger_html += f'<div class="tx-log-row">'
-            ledger_html += f'<span class="log-prefix">{date_str}</span>'
-            ledger_html += f'<span class="log-merchant">{str(t["merchant"])}</span>'
-            ledger_html += f'<span class="log-category">{t["category"]}</span>'
-            ledger_html += f'<span class="log-amount {amt_class}">{amt_str}</span>'
-            ledger_html += '</div>'
-
-        ledger_html += "</div>"
-        st.markdown(ledger_html, unsafe_allow_html=True)
-
-        # We keep the editor in a separate section but make it much more compact
-        with st.expander("🛠️ SYSTEM_MODS (Edit Transactions)", expanded=False):
-            for t in sorted_txs[start:start + page_size]:
-                with st.popover(f"MOD: {t['merchant']} ({t['date']})"):
-                    transaction_editor(t, cat_options, shares_by_tx.get(t['id'], []))
+            date_str = date.fromisoformat(t['date']).strftime('%d %b')
+            sign = '+' if t['direction'] == 'credit' else '−'
+            tone = 'credit' if t['direction'] == 'credit' else ''
+            detail = ''
+            if t['personal_amount'] != t['amount']:
+                detail = f"Your share {inr(t['personal_amount'], 2)}"
+            elif t['is_repayment']:
+                detail = 'Split repayment'
+            elif t['direction'] == 'debit' and db.normalize_merchant(t['merchant']) in rules:
+                detail = 'Vendor rule saved'
+            with st.container(key=f"ledger_row_{t['id']}"):
+                row, action = st.columns([10, 1], vertical_alignment='center', gap='small')
+                with row:
+                    st.markdown(f'<div class="ledger-row"><span class="row-date">{date_str}</span>'
+                                f'<span class="row-vendor">{escape(t["merchant"])}<small>{escape(detail)}</small></span>'
+                                f'<span class="row-category"><span>{escape(t["category"])}</span></span>'
+                                f'<span class="row-amount {tone}">{sign}{inr(t["amount"], 2)}</span></div>', unsafe_allow_html=True)
+                with action:
+                    transaction_editor(t, cat_options, shares_by_tx.get(t['id'], []), rules)
+        st.caption(f'Showing {start + 1}–{min(start + page_size, len(sorted_txs))} of {len(sorted_txs)} transactions')
 
 
 # ---------------------------------------------------------------- top bar
@@ -235,13 +242,20 @@ month_options = snapshot['month_options']
 if st.session_state.get('budget_cycle') not in month_options:
     st.session_state['budget_cycle'] = snapshot['month']
 
-col_nav1, col_nav2 = st.columns([3, 1], vertical_alignment="center")
-with col_nav1:
-    st.markdown('<div class="nav-title">Am I cooked?</div>', unsafe_allow_html=True)
-with col_nav2:
-    month = st.selectbox("Budget cycle", options=month_options, index=0,
-                         format_func=lambda key: f"From {key}" if len(key) == 10 else key,
-                         label_visibility="collapsed", key="budget_cycle")
+brand, add = st.columns([5, 1.2], vertical_alignment='center')
+with brand:
+    st.markdown('<div class="brand">Am I cooked? <span>Personal finance</span></div>', unsafe_allow_html=True)
+with add:
+    manual_transaction_editor(today)
+heading, cycle = st.columns([4, 1.3], vertical_alignment='center')
+with heading:
+    st.title('Overview')
+with cycle:
+    month = st.selectbox('Budget cycle', options=month_options,
+                        format_func=lambda key: f'From {key}' if len(key) == 10 else key,
+                        label_visibility='collapsed', key='budget_cycle')
+if 'notice' in st.session_state:
+    st.toast(st.session_state.pop('notice'))
 
 received_credits = snapshot['credits']
 shares = snapshot['shares']
@@ -249,203 +263,61 @@ shares_by_tx = {}
 for share in shares:
     shares_by_tx.setdefault(share["transaction_id"], []).append(share)
 
-with st.expander("Pocket-money cycle", expanded=not receipt_dates):
-    st.caption("Your cycle starts on the date of a received credit marked Pocket Money. "
-               "Mark the existing ₹12,000 payment below. Other credits do not reset your cycle.")
-    credits = [t for t in received_credits if not t['is_repayment']]
-    if credits:
-        credits_by_id = {t["id"]: t for t in credits}
-        credit_id = st.selectbox(
-            "Received payment", options=list(credits_by_id),
-            format_func=lambda key: (
-                f"{credits_by_id[key]['date']} · {credits_by_id[key]['merchant']} · "
-                f"{inr(credits_by_id[key]['amount'])} · {credits_by_id[key]['category']}"
-            ),
-        )
-        if st.button("Mark as pocket money", width="stretch"):
-            db.update_category(credit_id, "Pocket Money")
-            st.rerun()
-    else:
-        st.info("Add the received payment below as a credit with category Pocket Money and its receipt date.")
-    if not receipt_dates:
-        st.info("No pocket-money receipt marked yet. Showing the existing monthly budget until you select one.")
-
-# ---------------------------------------------------------------- data
+# ---------------------------------------------------------------- overview
 m = snapshot['metrics']
-st.caption(f"Cycle started {m['cycle_start']:%d %b %Y} · "
-           f"{'Estimated through' if month == month_now and receipt_dates else 'Through'} "
-           f"{m['cycle_end']:%d %b %Y} · {m['days_remaining']} days remaining")
-if receipt_dates and month == month_now:
-    st.caption("Allowance assumes the next payment arrives one month after the last. "
-               "The cycle resets only when the next received payment is marked Pocket Money.")
-
-daily_avg = m.get("daily_avg", 0.0)
-balance = m.get("balance", 0.0)
-safe_to_spend = m.get("safe_to_spend", balance)
-days_left = m['days_until_broke']
-days_left_label = str(int(days_left)) if days_left is not None else '—'
-rate_description = (f"net spending {inr(daily_avg)} a day" if daily_avg >= 0
-                    else f"net gaining {inr(abs(daily_avg))} a day")
-
-try:
-    food_remaining = float(m.get("food_remaining_today", 0.0))
-except (TypeError, ValueError):
-    food_remaining = 0.0
-try:
-    food_spent = float(m.get("today_food_spend", 0.0))
-except (TypeError, ValueError):
-    food_spent = 0.0
-food_silo = m.get("food_rollover", 0.0)
-
-# ---------------------------------------------------------------- hero
-if food_remaining > 0:
-    status_text = f"You have {inr(food_remaining)} left for food today."
-    food_tone = "safe"
-elif food_remaining == 0:
-    status_text = "Food budget is exactly zero. Eat the mess food."
-    food_tone = "warn"
-else:
-    status_text = f"Overspent on food by {inr(abs(food_remaining))}. You're officially cooked."
-    food_tone = "hot"
-
-clock_tone = "hot" if days_left is not None and days_left <= 7 else (
-    "warn" if days_left is not None and days_left <= 14 else "safe")
-
-bar_pct = min(max(food_spent / TARGET_DAILY, 0), 1) * 100 if TARGET_DAILY else 0
-
-# Create segmented bar HTML
-segments_html = "".join([
-    f'<div class="segment {"filled " + food_tone if i < bar_pct else ""}"></div>'
-    for i in range(0, 100, 10)
-])
-
-hero_left, hero_right = st.columns([1, 1.25], gap="large", vertical_alignment="center")
-with hero_left:
-    st.markdown(
-        f"""
-        <div class="hud-gauge {clock_tone}">
-          <span class="gauge-label">Days until broke</span>
-          <div class="gauge-value">
-            <span class="gauge-bracket">[</span>{days_left_label}<span class="gauge-bracket">]</span>
-          </div>
-          <div class="hud-text" style="font-family:var(--font-display); font-size:0.7rem; color:var(--mute);">
-            {inr(balance)} REMAINING · {rate_description.upper()}
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with hero_right:
-    st.markdown(
-        f"""
-        <div class="hud-gauge {food_tone}">
-          <span class="gauge-label">Food budget today</span>
-          <div class="gauge-value">{inr(food_remaining)}</div>
-          <div class="hud-text" style="font-size:0.7rem; color:var(--mute); margin-bottom:0.5rem;">{status_text}</div>
-          <div class="segmented-bar">{segments_html}</div>
-          <div class="bar-cap" style="display: flex; justify-content: space-between; gap: 2rem; font-family:var(--font-display); font-size:0.6rem; color:var(--mute-dark);">
-            <span>{inr(food_spent)} SPENT</span>
-            <span>{inr(TARGET_DAILY)} LIMIT</span>
-          </div>
-          <div class="silo" style="margin-top:1rem; padding-top:0.5rem; border-top:1px solid var(--line); display:flex; justify-content:space-between; color:var(--mute); font-size:0.7rem; font-family:var(--font-display);">
-            <span>Silo Reserves</span><b class="hud-value">{inr(food_silo)}</b>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-# ---------------------------------------------------------------- stat tiles
-tiles_data = [
-    ("Daily allowance", inr(m["daily_allowance"]), True),
-    ("Food minimum", inr(TARGET_DAILY), False),
-    ("Extra per day", inr(m["fun_money"]), False),
-    ("Safe per meal", inr(m["safe_per_meal"]), False),
-    ("Current burn rate", inr(m["daily_avg"]), False),
-    ("Safe to spend", inr(m["safe_to_spend"]), False),
+balance = m['balance']
+st.caption(f"{m['cycle_start']:%d %b} – {m['cycle_end']:%d %b %Y} · {m['days_remaining']} days remaining")
+outstanding = sum(max(s['cents'] / 100 - s['repaid'], 0) for s in shares if s['date'] <= str(today))
+summary = [
+    ('Current balance', inr(balance) if m['has_balance'] else 'Not set', 'Money available right now'),
+    ('Daily allowance', inr(m['daily_allowance']), f"Across {m['days_remaining']} remaining days"),
+    ('Food left today', inr(m['food_remaining_today']), f"{inr(m['today_food_spend'])} spent · {inr(TARGET_DAILY)} daily budget"),
+    ('Owed to you', inr(outstanding), 'Outstanding across all cycles'),
 ]
-tiles_html = "".join(
-    f'<div class="hud-tile">'
-    f'<div class="tile-meta"><span class="tile-index">S{i+1:02}</span><span class="tile-label">{label}</span></div>'
-    f'<div class="tile-value">{value}</div>'
-    f'</div>'
-    for i, (label, value, lead) in enumerate(tiles_data)
-)
-st.markdown(f'<div class="section-title">CYCLE_READOUT</div><div class="tiles">{tiles_html}</div>', unsafe_allow_html=True)
-with st.expander('How these numbers are calculated'):
-    st.write(f"Daily allowance: {inr(balance, 2)} current balance ÷ "
-             f"{m['days_remaining']} days left = {inr(m['daily_allowance'], 2)} per day.")
-    st.write(f"Extra per day: {inr(m['daily_allowance'], 2)} − {inr(TARGET_DAILY)} "
-             f"food minimum = {inr(m['fun_money'], 2)}.")
-    st.write(f"Safe per meal: {inr(m['daily_allowance'], 2)} ÷ 2 meals = "
-             f"{inr(m['safe_per_meal'], 2)} per meal.")
-    st.write(f"Current burn rate: ({inr(m['personal_spending'], 2)} personal spending − "
-             f"{inr(m['received_offsets'], 2)} received credits) ÷ "
-             f"{m['days_elapsed']} elapsed days = {inr(daily_avg, 2)} per day.")
-    st.caption('Day counts include today and days with no spending. Your month starts when pocket money arrives. '
-               'Received credits offset spending, except Pocket Money, which funds the cycle. '
-               'A negative burn rate means more money came in than went out, excluding pocket money. '
-               'Income and carried-over cash are already included in your current balance.')
-    st.caption("Split expenses count only your share. Linked repayments are excluded from spending offsets. "
-               "Money owed to you is not available cash until repaid.")
-    st.write(f"Safe to spend is a separate figure: {inr(balance, 2)} balance − "
-             f"{inr(m['reserved'], 2)} reserved funds = {inr(safe_to_spend, 2)}. "
-             "Daily allowance uses the full current balance, as requested.")
-    if days_left is None:
-        st.caption('No depletion estimate: net spending is zero or negative this cycle.')
+st.markdown('<div class="summary-grid">' + ''.join(
+    f'<div class="summary-item"><div>{label}</div><strong>{value}</strong><small>{caption}</small></div>'
+    for label, value, caption in summary) + '</div>', unsafe_allow_html=True)
+if not m['has_balance']:
+    st.info('Set your current balance in Settings & maintenance to calculate your daily allowance.')
 
-# ---------------------------------------------------------------- breakdown charts
-txs = m["txs"]
-st.markdown('<div class="section-title">RESOURCE_DISTRIBUTION</div>', unsafe_allow_html=True)
-
-if not txs:
-    st.info("No spending data to analyze this cycle.")
-else:
-    df_tx = pd.DataFrame(txs)
-    debits = df_tx[df_tx["direction"] == "debit"].copy()
-    debits['amount'] = debits['personal_amount']
-
-    col_c1, col_c2, col_c3 = st.columns(3, gap="large")
-
-    with col_c1:
-        if not debits.empty:
-            cat_sums = debits.groupby("category")["amount"].sum().sort_values(ascending=False)
-            st.plotly_chart(spending_donut(cat_sums, "spent"), width="stretch", config={"displayModeBar": False})
-
-    with col_c2:
-        if not debits.empty:
-            merch_sums = debits.groupby("merchant")["amount"].sum().sort_values(ascending=False).head(5)
-            # Group the rest into "Other" if there are many
-            if len(debits["merchant"].unique()) > 5:
-                other_sum = debits["amount"].sum() - merch_sums.sum()
-                if other_sum > 0:
-                    merch_sums["Other Merchants"] = other_sum
-            st.plotly_chart(spending_donut(merch_sums, "top vendors"), width="stretch", config={"displayModeBar": False})
-
-    with col_c3:
-        if not df_tx.empty:
-            st.plotly_chart(burn_rate_line(df_tx, TARGET_DAILY,
-                                          m["cycle_start"], m["cycle_end"], today),
-                           width="stretch", config={"displayModeBar": False})
-
-# ---------------------------------------------------------------- splits
+txs = m['txs']
+chart, breakdown = st.columns([1.7, 1], gap='medium')
+with chart:
+    with st.container(border=True):
+        st.subheader('Spending this cycle')
+        st.caption('Your share of expenses, less received credits. Pocket money and split repayments are excluded.')
+        if txs:
+            fig = burn_rate_line(pd.DataFrame(txs), TARGET_DAILY, m['cycle_start'], m['cycle_end'], today)
+            fig.update_layout(height=230, margin=dict(l=10, r=10, t=5, b=0))
+            st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
+        else:
+            st.info('Your spending trend will appear after your first transaction.')
+with breakdown:
+    with st.container(border=True):
+        st.subheader('By category')
+        st.caption('Personal spending this cycle')
+        totals = {}
+        for t in txs:
+            if t['direction'] == 'debit' and t['personal_amount'] > 0:
+                totals[t['category']] = totals.get(t['category'], 0) + t['personal_amount']
+        total = sum(totals.values())
+        for label, amount in sorted(totals.items(), key=lambda item: item[1], reverse=True):
+            pct = amount / total * 100
+            st.markdown(f'<div class="category-line"><span>{escape(label)}</span><b>{inr(amount)}</b><small>{pct:.0f}%</small></div>'
+                        f'<div class="category-track"><span style="width:{pct:.1f}%"></span></div>', unsafe_allow_html=True)
+        if not totals:
+            st.caption('No personal expenses this cycle.')
+transaction_list(txs, shares_by_tx, month, snapshot['merchant_categories'])
 repayment_editor(shares, received_credits, today)
-
-# ---------------------------------------------------------------- ledger
-transaction_list(txs, shares_by_tx, month)
+with st.expander('Budget details'):
+    st.write(f"Daily allowance: {inr(balance, 2)} ÷ {m['days_remaining']} days = {inr(m['daily_allowance'], 2)}.")
+    st.write(f"Safe to spend: {inr(m['safe_to_spend'])} · Reserved funds: {inr(m['reserved'])} · Food savings: {inr(m['food_rollover'])}.")
+    st.write(f"Safe per meal: {inr(m['safe_per_meal'])} · Extra per day: {inr(m['fun_money'])} · Average net spend: {inr(m['daily_avg'])} per day.")
+    st.caption('Allowance uses available cash. Money owed to you becomes available only when repaid. The cycle resets when the next received payment is marked Pocket Money.')
 
 # ---------------------------------------------------------------- admin
 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
 with st.expander("Settings & maintenance"):
-    st.caption(
-        f"Debug: date {today} | budget {TARGET_DAILY} | spend {m.get('today_food_spend', 0)} | "
-        f"rollover {m.get('food_rollover', 0)} | remaining {m.get('food_remaining_today', 0)}"
-    )
-
-    manual_transaction_editor(today)
-
-    st.divider()
-
     new_bal = st.number_input(
         "Adjust current balance (₹)", value=float(round(m["balance"])), step=100.0, format="%.2f", key="admin_bal"
     )
@@ -468,3 +340,25 @@ with st.expander("Settings & maintenance"):
             if st.button("Clear", key=f"u_admin_{u['id']}"):
                 db.delete_unparsed(u["id"])
                 st.rerun()
+
+with st.expander("Pocket-money cycle", expanded=not receipt_dates):
+    st.caption("Your cycle starts on the date of a received credit marked Pocket Money. "
+               "Choose its received payment below. Other credits do not reset your cycle.")
+    credits = [t for t in received_credits if not t['is_repayment']]
+    if credits:
+        credits_by_id = {t["id"]: t for t in credits}
+        credit_id = st.selectbox(
+            "Received payment", options=list(credits_by_id),
+            format_func=lambda key: (
+                f"{credits_by_id[key]['date']} · {credits_by_id[key]['merchant']} · "
+                f"{inr(credits_by_id[key]['amount'])} · {credits_by_id[key]['category']}"
+            ),
+        )
+        if st.button("Mark as pocket money", width="stretch"):
+            db.update_category(credit_id, "Pocket Money")
+            st.rerun()
+    else:
+        st.info("Add the received payment below as a credit with category Pocket Money and its receipt date.")
+    if not receipt_dates:
+        st.info("No pocket-money receipt marked yet. Showing the existing monthly budget until you select one.")
+
