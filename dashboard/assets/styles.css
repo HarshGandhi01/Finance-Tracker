@@ -1,13 +1,11 @@
 @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Public+Sans:wght@400;500;600;700&display=swap");
 
 :root {
-  /* Back to Pure Obsidian - No "AI Slop" Gradients */
-  --bg: #0D0D0D;            /* Absolute Black */
-  --surface: #141418;       /* Muted Slate */
-  --line: #2A2A2E;          /* Sharp Hairline */
-  --line-bright: #3F3F44;   /* Active Border */
+  --bg: #0D0D0D;
+  --surface: #141418;
+  --line: #2A2A2E;
+  --line-bright: #3F3F44;
 
-  /* Signal Colors - Clean Neon, No Soft Glows */
   --signal-mint: #00FF9F;
   --signal-yellow: #FDFD96;
   --signal-red: #FF3131;
@@ -16,14 +14,14 @@
   --mute: #66666B;
   --mute-dark: #444448;
 
-  --radius-hard: 2px;
+  --radius-hard: 0px;
   --border-weight: 1px;
 
   --font-display: 'JetBrains Mono', monospace;
   --font-body: 'Public Sans', sans-serif;
 }
 
-/* ---------- Base ---------- */
+/* ---------- Base Reset ---------- */
 html, body, .stApp, [data-testid="stAppViewContainer"] {
     background: var(--bg) !important;
     color: var(--text) !important;
@@ -34,7 +32,7 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
 .stApp { background: var(--bg) !important; }
 [data-testid="stHeader"], [data-testid="stToolbar"] { background: transparent !important; }
 
-/* Simple, thin scanline - No radial gradients or "cosmic" dust */
+/* Scanline - a subtle industrial touch */
 .stApp::after {
   content: " ";
   display: block;
@@ -44,206 +42,234 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
   z-index: 9999;
   background-size: 100% 4px;
   pointer-events: none;
-  opacity: 0.3;
+  opacity: 0.2;
 }
 
 /* ---------- Typography ---------- */
 .nav-title {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 1.6rem;
+  font-size: 1.4rem;
   letter-spacing: 0.1em;
   color: var(--text);
   text-transform: uppercase;
+  border-bottom: 2px solid var(--text);
+  display: inline-block;
+  margin-bottom: 1rem;
 }
 
 .section-title {
-  font-family: var(--font-body);
+  font-family: var(--font-display);
   font-weight: 700;
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--mute);
-  margin: 3rem 0 1rem;
-  border-left: 3px solid var(--line);
-  padding-left: 12px;
-}
-
-/* ---------- Modular HUD Panels ---------- */
-.hud-panel {
-  background: var(--surface);
-  border: var(--border-weight) solid var(--line);
-  border-radius: var(--radius-hard);
-  padding: 1.5rem;
-  position: relative;
-  box-shadow: none; /* No fluffy shadows */
-  transition: border-color 0.1s ease;
-}
-
-.hud-panel:hover {
-  border-color: var(--line-bright);
-}
-
-.hud-label {
-  font-family: var(--font-body);
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  color: var(--mute);
-  margin-bottom: 0.75rem;
-  display: block;
-}
-
-.hud-value {
-  font-family: var(--font-display);
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.hud-value-lg {
-  font-size: clamp(3rem, 10vw, 5rem);
-  line-height: 1;
-  letter-spacing: -0.04em;
-  margin: 0.5rem 0;
-}
-
-.hud-value-md {
-  font-size: 2rem;
-  line-height: 1.2;
-}
-
-/* ---------- Signal States ---------- */
-.status-comfortable { color: var(--signal-mint) !important; }
-.status-caution { color: var(--signal-yellow) !important; }
-.status-cooked { color: var(--signal-red) !important; }
-
-.bar {
-  height: 8px;
-  background: #000;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-hard);
-  margin: 1.5rem 0 0.6rem;
-  overflow: hidden;
-}
-.bar-fill {
-  display: block;
-  height: 100%;
-  background: var(--signal-mint);
-}
-.bar-fill.status-caution { background: var(--signal-yellow); }
-.bar-fill.status-cooked { background: var(--signal-red); }
-
-.bar-cap {
+  margin: 2rem 0 1rem;
   display: flex;
-  justify-content: space-between;
-  color: var(--mute-dark);
-  font-family: var(--font-display);
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
+  align-items: center;
+  gap: 10px;
 }
 
-/* ---------- Tactical Readouts ---------- */
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-}
-.hud-tile {
-  background: var(--surface);
-  border: var(--border-weight) solid var(--line);
-  border-left: 3px solid var(--line);
-  border-radius: var(--radius-hard);
-  padding: 1.2rem;
-}
-.hud-tile:hover {
-  border-color: var(--line-bright);
-}
-.hud-tile .tile-label {
-  color: var(--mute);
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  margin-bottom: 0.5rem;
-}
-.hud-tile .tile-value {
-  font-family: var(--font-display);
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  font-size: 1.6rem;
-  color: var(--text);
-}
-.hud-tile.lead {
-  border-left-color: var(--signal-mint);
-}
-.hud-tile.lead .tile-value {
+.section-title::before {
+  content: ">>";
   color: var(--signal-mint);
 }
 
-/* ---------- Terminal Ledger ---------- */
-.tx-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.8rem 1.2rem;
+/* ---------- Gauge System (The Hero) ---------- */
+.hud-gauge {
   background: var(--surface);
   border: var(--border-weight) solid var(--line);
-  border-radius: var(--radius-hard);
-  margin-bottom: 0.4rem;
+  border-top: 4px solid var(--line-bright);
+  padding: 1rem;
+  position: relative;
 }
-.tx-row:hover {
-  border-color: var(--line-bright);
-}
-.tx-date {
-  color: var(--mute);
+
+.hud-gauge.hot { border-top-color: var(--signal-red); }
+.hud-gauge.warn { border-top-color: var(--signal-yellow); }
+.hud-gauge.safe { border-top-color: var(--signal-mint); }
+
+.gauge-label {
   font-family: var(--font-display);
-  font-size: 0.85rem;
-  min-width: 4.5rem;
-}
-.tx-merchant {
-  flex: 1;
-  font-weight: 500;
-  color: #fff;
-}
-.tx-category {
-  font-family: var(--font-body);
   font-size: 0.65rem;
-  font-weight: 700;
   text-transform: uppercase;
-  color: var(--text);
-  background: #000;
-  border: 1px solid var(--line);
-  padding: 0.2rem 0.5rem;
-  border-radius: var(--radius-hard);
+  color: var(--mute);
+  margin-bottom: 0.5rem;
+  display: block;
 }
-.tx-amount {
+
+.gauge-value {
   font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
-  font-size: 1.1rem;
-  min-width: 6.5rem;
-  text-align: right;
+  font-size: clamp(2.5rem, 8vw, 4rem);
+  line-height: 1;
+  color: var(--text);
 }
-.tx-debit { color: var(--text); }
-.tx-credit { color: var(--signal-mint); }
+
+.gauge-bracket {
+  color: var(--mute-dark);
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+
+/* Segmented Bar */
+.segmented-bar {
+  display: flex;
+  gap: 3px;
+  margin: 1rem 0;
+}
+
+.segment {
+  height: 6px;
+  flex: 1;
+  background: var(--line);
+  border-radius: 0;
+}
+
+.segment.filled { background: var(--signal-mint); }
+.segment.filled.warn { background: var(--signal-yellow); }
+.segment.filled.hot { background: var(--signal-red); }
+
+/* ---------- Data Readouts (Tiles) ---------- */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0px; /* Tight, tabular fit */
+  border: var(--border-weight) solid var(--line);
+}
+
+.hud-tile {
+  background: var(--surface);
+  border: var(--border-weight) solid var(--line);
+  padding: 0.75rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tile-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tile-index {
+  font-family: var(--font-display);
+  font-size: 0.6rem;
+  color: var(--mute-dark);
+  border: 1px solid var(--mute-dark);
+  padding: 0 4px;
+}
+
+.tile-label {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--mute);
+  text-transform: none;
+}
+
+.tile-value {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 1.2rem;
+  color: var(--text);
+}
+
+/* ---------- Terminal Ledger ---------- */
+.ledger-container {
+  font-family: var(--font-display);
+  border: var(--border-weight) solid var(--line);
+  background: #050505;
+}
+
+.ledger-header {
+  display: grid;
+  grid-template-columns: 80px 1fr 100px 120px;
+  padding: 0.5rem 1rem;
+  background: var(--surface);
+  border-bottom: var(--border-weight) solid var(--line);
+  font-size: 0.7rem;
+  color: var(--mute);
+  text-transform: uppercase;
+}
+
+.tx-log-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 100px 120px;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.85rem;
+  align-items: center;
+}
+
+.tx-log-row:hover {
+  background: #1a1a1a;
+}
+
+.log-prefix {
+  color: var(--mute-dark);
+  font-size: 0.7rem;
+}
+
+.log-merchant {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-category {
+  font-size: 0.65rem;
+  color: var(--mute);
+  text-align: center;
+}
+
+.log-amount {
+  text-align: right;
+  font-weight: 700;
+}
+
+.log-amount.debit { color: var(--text); }
+.log-amount.credit { color: var(--signal-mint); }
 
 /* ---------- Component Overrides ---------- */
 [data-baseweb="select"] > div, [data-baseweb="input"] {
   background: #000 !important;
   border: 1px solid var(--line) !important;
-  border-radius: var(--radius-hard) !important;
+  border-radius: 0 !important;
   color: var(--text) !important;
+  font-family: var(--font-display) !important;
 }
+
 .stButton > button {
-  border-radius: var(--radius-hard);
+  border-radius: 0;
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
   font-family: var(--font-display);
   text-transform: uppercase;
+  font-size: 0.7rem;
+  transition: all 0.1s ease;
+}
+
+.stButton > button:hover {
+  background: var(--line-bright);
+  border-color: var(--text);
 }
 
 @media (max-width: 720px) {
-  .tiles { grid-template-columns: 1fr; }
-  .hud-value-lg { font-size: 3rem; }
+  .ledger-header { display: none; }
+  .tx-log-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 1rem;
+  }
+  .log-amount {
+    text-align: left;
+    font-size: 1.1rem;
+    border-top: 1px solid var(--line);
+    padding-top: 0.5rem;
+  }
 }

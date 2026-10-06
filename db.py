@@ -2,6 +2,7 @@
 """
 import calendar
 import os
+import json
 from decimal import Decimal, InvalidOperation
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -420,6 +421,22 @@ def set_food_silo_zero():
     """Reset the food silo balance to zero."""
     set_setting("food_silo_balance", 0.0)
     set_setting("food_silo_last_update", str(today_ist()))
+
+def get_merchant_category(merchant: str) -> str | None:
+    mapping = get_setting("merchant_category_map", "{}")
+    try:
+        return json.loads(mapping).get(merchant.strip())
+    except json.JSONDecodeError:
+        return None
+
+def set_merchant_category(merchant: str, category: str):
+    mapping_str = get_setting("merchant_category_map", "{}")
+    try:
+        mapping = json.loads(mapping_str)
+    except json.JSONDecodeError:
+        mapping = {}
+    mapping[merchant.strip()] = category
+    set_setting("merchant_category_map", json.dumps(mapping))
 
 
 def current_balance(month: str, month_txs: list, settings: dict | None = None,

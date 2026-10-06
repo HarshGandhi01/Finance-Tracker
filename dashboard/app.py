@@ -101,14 +101,27 @@ def manual_transaction_editor(today):
     with st.popover("Add manual transaction", width="stretch"):
         m_date = st.date_input("Transaction date", value=today, max_value=today)
         m_merchant = st.text_input("Merchant", placeholder="e.g. Hungry")
+
+        # Auto-tagging logic
+        default_cat = db.CATEGORIES[0]
+        if m_merchant:
+            mapped_cat = db.get_merchant_category(m_merchant)
+            if mapped_cat and mapped_cat in db.CATEGORIES:
+                default_cat = mapped_cat
+
         m_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
-        m_cat = st.selectbox("Category", options=db.CATEGORIES)
+        m_cat = st.selectbox("Category", options=db.CATEGORIES, index=db.CATEGORIES.index(default_cat))
         m_dir = st.selectbox("Direction", options=["debit", "credit"])
+
+        auto_tag = st.checkbox("Save as default category for this merchant", value=False)
+
         manual_splits = split_fields(m_amount, 'manual') if m_dir == 'debit' else []
         if st.button("Log transaction", width="stretch", disabled=manual_splits is None):
             if m_merchant and m_amount > 0:
                 try:
                     if db.add_transaction(m_date, m_merchant, m_amount, direction=m_dir, category=m_cat, splits=manual_splits):
+                        if auto_tag:
+                            db.set_merchant_category(m_merchant, m_cat)
                         st.rerun()
                     else:
                         st.error("Could not save this transaction.")
@@ -175,32 +188,42 @@ def transaction_list(txs, shares_by_tx, month):
             page = st.selectbox("Transaction page", range(1, page_count + 1), key=f"tx_page_{month}")
         start = (page - 1) * page_size
         st.caption(f"Showing {start + 1}–{min(start + page_size, len(sorted_txs))} of {len(sorted_txs)} transactions")
+
+        # Ledger wrapper
+        ledger_html = f"""
+        <div class="ledger-container">
+            <div class="ledger-header">
+                <span>DATE</span>
+                <span>MERCHANT</span>
+                <span>CAT</span>
+                <span style="text-align:right">AMOUNT</span>
+            </div>
+        """
+
         for t in sorted_txs[start:start + page_size]:
             dt = pd.to_datetime(t["date"], errors="coerce")
             date_str = dt.strftime("%d %b") if pd.notna(dt) else t["date"]
+
             sign = "+" if t["direction"] == "credit" else "-"
-            amt_class = "tx-credit" if t["direction"] == "credit" else "tx-debit"
+            amt_class = "credit" if t["direction"] == "credit" else "debit"
             amt_str = f'{sign}{inr(t["amount"], 2)}'
 
-            col1, col2 = st.columns([10, 1], vertical_alignment="center")
-            with col1:
-                st.markdown(
-                    f"""
-                    <div class="tx-row">
-                      <div class="tx-date">{date_str}</div>
-                      <div class="tx-merchant">{str(t["merchant"])}</div>
-                      <div class="tx-category">{t["category"]}</div>
-                      <div class="tx-amount {amt_class}">{amt_str}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-            with col1:
-                if t['personal_amount'] != t['amount']:
-                    st.caption(f"Your share {inr(t['personal_amount'], 2)} · Others' shares {inr(t['amount'] - t['personal_amount'], 2)}")
-                if t['is_repayment']:
-                    st.caption("Split repayment")
-            with col2:
+            ledger_html += f"""
+            <div class="tx-log-row">
+                <span class="log-prefix">{date_str}</span>
+                <span class="log-merchant">{str(t["merchant"])}</span>
+                <span class="log-category">{t["category"]}</span>
+                <span class="log-amount {amt_class}">{amt_str}</span>
+            </div>
+            """
+
+        ledger_html += "</div>"
+        st.markdown(ledger_html, unsafe_allow_html=True)
+
+        # We still need the editor, but we'll place it as a separate interaction layer
+        # Since we've changed the layout to a raw table, we'll use a simple index to link the editor
+        for t in sorted_txs[start:start + page_size]:
+            with st.expander(f"Edit: {t['merchant']} ({t['date']})", expanded=False):
                 transaction_editor(t, cat_options, shares_by_tx.get(t['id'], []))
 
 
@@ -283,25 +306,35 @@ food_silo = m.get("food_rollover", 0.0)
 # ---------------------------------------------------------------- hero
 if food_remaining > 0:
     status_text = f"You have {inr(food_remaining)} left for food today."
+    food_tone = "safe"
 elif food_remaining == 0:
     status_text = "Food budget is exactly zero. Eat the mess food."
+    food_tone = "warn"
 else:
     status_text = f"Overspent on food by {inr(abs(food_remaining))}. You're officially cooked."
+    food_tone = "hot"
 
 clock_tone = "hot" if days_left is not None and days_left <= 7 else (
-    "warn" if days_left is not None and days_left <= 14 else "")
-food_tone = "hot" if food_remaining < 0 else ""
+    "warn" if days_left is not None and days_left <= 14 else "safe")
+
 bar_pct = min(max(food_spent / TARGET_DAILY, 0), 1) * 100 if TARGET_DAILY else 0
+
+# Create segmented bar HTML
+segments_html = "".join([
+    f'<div class="segment {"filled " + food_tone if i < bar_pct else ""}"></div>'
+    for i in range(0, 100, 10)
+])
 
 hero_left, hero_right = st.columns([1, 1.25], gap="large", vertical_alignment="center")
 with hero_left:
-    # --- Hero Left (System Depletion) ---
     st.markdown(
         f"""
-        <div class="hud-panel">
-          <div class="hud-label">Days until broke</div>
-          <div class="hud-value-lg {clock_tone}">{days_left_label}</div>
-          <div class="hud-text" style="font-family:var(--font-display); font-size:0.8rem; letter-spacing:0.05em;">
+        <div class="hud-gauge {clock_tone}">
+          <span class="gauge-label">Days until broke</span>
+          <div class="gauge-value">
+            <span class="gauge-bracket">[</span>{days_left_label}<span class="gauge-bracket">]</span>
+          </div>
+          <div class="hud-text" style="font-family:var(--font-display); font-size:0.7rem; color:var(--mute);">
             {inr(balance)} REMAINING · {rate_description.upper()}
           </div>
         </div>
@@ -309,20 +342,19 @@ with hero_left:
         unsafe_allow_html=True,
     )
 with hero_right:
-    # --- Hero Right (Food Status) ---
     st.markdown(
         f"""
-        <div class="hud-panel">
-          <div class="hud-label">Food budget today</div>
-          <div class="hud-value-md {food_tone}">{inr(food_remaining)}</div>
-          <div class="hud-text">{status_text}</div>
-          <div class="bar"><span class="bar-fill {food_tone}" style="width:{bar_pct:.0f}%"></span></div>
-          <div class="bar-cap" style="display: flex; justify-content: space-between; gap: 2rem;">
+        <div class="hud-gauge {food_tone}">
+          <span class="gauge-label">Food budget today</span>
+          <div class="gauge-value">{inr(food_remaining)}</div>
+          <div class="hud-text" style="font-size:0.7rem; color:var(--mute); margin-bottom:0.5rem;">{status_text}</div>
+          <div class="segmented-bar">{segments_html}</div>
+          <div class="bar-cap" style="display: flex; justify-content: space-between; gap: 2rem; font-family:var(--font-display); font-size:0.6rem; color:var(--mute-dark);">
             <span>{inr(food_spent)} SPENT</span>
             <span>{inr(TARGET_DAILY)} LIMIT</span>
           </div>
-          <div class="silo" style="margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--line); display:flex; justify-content:space-between; color:var(--mute); font-size:0.8rem;">
-            <span>Food Silo Reserves</span><b class="hud-value">{inr(food_silo)}</b>
+          <div class="silo" style="margin-top:1rem; padding-top:0.5rem; border-top:1px solid var(--line); display:flex; justify-content:space-between; color:var(--mute); font-size:0.7rem; font-family:var(--font-display);">
+            <span>Silo Reserves</span><b class="hud-value">{inr(food_silo)}</b>
           </div>
         </div>
         """,
@@ -330,7 +362,7 @@ with hero_right:
     )
 
 # ---------------------------------------------------------------- stat tiles
-tiles = [
+tiles_data = [
     ("Daily allowance", inr(m["daily_allowance"]), True),
     ("Food minimum", inr(TARGET_DAILY), False),
     ("Extra per day", inr(m["fun_money"]), False),
@@ -339,9 +371,11 @@ tiles = [
     ("Safe to spend", inr(m["safe_to_spend"]), False),
 ]
 tiles_html = "".join(
-    f'<div class="hud-tile{" lead" if lead else ""}"><div class="tile-label">{label}</div>'
-    f'<div class="tile-value">{value}</div></div>'
-    for label, value, lead in tiles
+    f'<div class="hud-tile">'
+    f'<div class="tile-meta"><span class="tile-index">S{i+1:02}</span><span class="tile-label">{label}</span></div>'
+    f'<div class="tile-value">{value}</div>'
+    f'</div>'
+    for i, (label, value, lead) in enumerate(tiles_data)
 )
 st.markdown(f'<div class="section-title">CYCLE_READOUT</div><div class="tiles">{tiles_html}</div>', unsafe_allow_html=True)
 with st.expander('How these numbers are calculated'):
