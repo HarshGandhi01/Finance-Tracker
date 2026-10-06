@@ -214,10 +214,10 @@ def transaction_list(txs, shares_by_tx, month):
         ledger_html += "</div>"
         st.markdown(ledger_html, unsafe_allow_html=True)
 
-        # We still need the editor, but we'll place it as a separate interaction layer
-        # Since we've changed the layout to a raw table, we'll use a simple index to link the editor
+        # Integrated editor - place editor directly under each row in the loop
+        # To keep the terminal look, we use a small, compact container
         for t in sorted_txs[start:start + page_size]:
-            with st.expander(f"Edit: {t['merchant']} ({t['date']})", expanded=False):
+            with st.expander(f"MOD_ENTRY: {t['merchant']} ({t['date']})", expanded=False):
                 transaction_editor(t, cat_options, shares_by_tx.get(t['id'], []))
 
 
