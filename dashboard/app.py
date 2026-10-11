@@ -1,7 +1,7 @@
 """Am I Cooked? dashboard."""
 import os
 import sys
-from datetime import date
+from datetime import date, timedelta
 from html import escape
 
 # Ensure repo root is on the path so 'import db' works on Vercel/Streamlit
@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from database_loader import load_database
-from theme import apply_theme, inr, burn_rate_line, twentieth_in_cycle
+from theme import apply_theme, inr, burn_rate_line, next_25th
 
 db = load_database()
 
@@ -267,16 +267,18 @@ for share in shares:
 # ---------------------------------------------------------------- overview
 m = snapshot['metrics']
 balance = m['balance']
-deadline = twentieth_in_cycle(m['cycle_start'], m['cycle_end'])
-scope = st.segmented_control('Plan through', ['Full cycle', 'Until 20th'],
-                             default='Full cycle', key='plan_through')
-plan_end = deadline if scope == 'Until 20th' and deadline >= today else m['cycle_end']
+scope = st.segmented_control('Budget horizon', ['Until money date', 'Full cycle'],
+                             default='Until money date', key='plan_through')
+default_money_date = next_25th(today)
+if st.session_state.get('money_date', default_money_date) <= today:
+    st.session_state['money_date'] = default_money_date
+money_date = st.date_input('Ask for money on', value=default_money_date,
+                           min_value=today + timedelta(days=1), key='money_date')
+plan_end = money_date - timedelta(days=1) if scope == 'Until money date' else m['cycle_end']
 days_to_plan = max((plan_end - today).days + 1, 1)
 planned_allowance = balance / days_to_plan
 st.caption(f"{m['cycle_start']:%d %b} – {m['cycle_end']:%d %b %Y} · "
-           f"Plan through {plan_end:%d %b} · {days_to_plan} days to cover")
-if scope == 'Until 20th' and deadline < today:
-    st.caption('The 20th has passed for this cycle, so this view uses the cycle end.')
+           f"Cover through {plan_end:%d %b} · {days_to_plan} days to cover")
 outstanding = sum(max(s['cents'] / 100 - s['repaid'], 0) for s in shares if s['date'] <= str(today))
 summary = [
     ('Current balance', inr(balance) if m['has_balance'] else 'Not set', 'Money available right now'),

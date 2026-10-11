@@ -14,6 +14,7 @@ h3 { font-size:18px!important; font-weight:600!important; padding:0!important; l
 .summary-item>div { font-size:14px; font-weight:500; }
 .summary-item strong { display:block; font-size:32px; line-height:1.3; font-weight:600; margin:6px 0; letter-spacing:-1px; font-variant-numeric:tabular-nums; }
 .summary-item small { color:var(--muted); font-size:12px; }
+[class*="st-key-money_date"] { max-width:320px; }
 .food-silo { display:flex; align-items:center; justify-content:space-between; gap:20px; margin:0 0 12px; padding:14px 18px; border:1px solid #3d6654; border-radius:6px; background:#1b2b25; }
 .food-silo>div { display:flex; align-items:baseline; gap:16px; white-space:nowrap; }
 .food-silo span { font-size:14px; font-weight:600; }

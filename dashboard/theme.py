@@ -57,14 +57,14 @@ def inr(x: float, decimals: int = 0) -> str:
     return "-" + out if neg else out
 
 
-def twentieth_in_cycle(start: date, end: date) -> date:
-    """The 20th following the start of this budget cycle."""
-    year, month = start.year, start.month
-    if start.day > 20:
+def next_25th(today: date) -> date:
+    """The next future 25th to use as the editable money-date default."""
+    year, month = today.year, today.month
+    if today.day >= 25:
         month += 1
         if month == 13:
             year, month = year + 1, 1
-    return min(date(year, month, 20), end)
+    return date(year, month, 25)
 
 
 def spending_donut(cat_sums, inner_label="spent") -> go.Figure:

@@ -153,15 +153,12 @@ class BudgetCycleTests(unittest.TestCase):
         self.assertEqual(pd.Timestamp(fig.data[2].x[-1]).date(), date(2026, 10, 20))
         self.assertAlmostEqual(fig.data[2].y[-1], 1000)
 
-    def test_twentieth_follows_receipt_cycle_across_months(self):
-        from dashboard.theme import twentieth_in_cycle
+    def test_money_date_defaults_to_next_25th(self):
+        from dashboard.theme import next_25th
 
-        self.assertEqual(twentieth_in_cycle(date(2026, 9, 25), date(2026, 10, 24)),
-                         date(2026, 10, 20))
-        self.assertEqual(twentieth_in_cycle(date(2026, 12, 25), date(2027, 1, 24)),
-                         date(2027, 1, 20))
-        self.assertEqual(twentieth_in_cycle(date(2026, 10, 1), date(2026, 10, 31)),
-                         date(2026, 10, 20))
+        self.assertEqual(next_25th(date(2026, 10, 11)), date(2026, 10, 25))
+        self.assertEqual(next_25th(date(2026, 10, 25)), date(2026, 11, 25))
+        self.assertEqual(next_25th(date(2026, 12, 26)), date(2027, 1, 25))
 
     def test_late_receipt_does_not_reset_cycle(self):
         self.receipt('2026-08-25')
