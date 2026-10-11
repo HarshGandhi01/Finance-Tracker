@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from database_loader import load_database
-from theme import apply_theme, inr, burn_rate_line, next_25th
+from theme import apply_theme, inr, burn_rate_line
 
 db = load_database()
 
@@ -234,6 +234,16 @@ today = db.today_ist()
 def _shift_month(d: date, delta: int) -> str:
     idx = d.year * 12 + (d.month - 1) + delta
     return f"{idx // 12}-{idx % 12 + 1:02d}"
+
+
+def next_25th(today: date) -> date:
+    """Default the editable money date to the next future 25th."""
+    year, month = today.year, today.month
+    if today.day >= 25:
+        month += 1
+        if month == 13:
+            year, month = year + 1, 1
+    return date(year, month, 25)
 
 
 snapshot = db.load_dashboard(today, st.session_state.get('budget_cycle'), TARGET_DAILY)
