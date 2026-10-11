@@ -220,7 +220,7 @@ def transaction_list(txs, shares_by_tx, month, rules):
                 row, action = st.columns([10, 1], vertical_alignment='center', gap='small')
                 with row:
                     st.markdown(f'<div class="ledger-row"><span class="row-date">{date_str}</span>'
-                                f'<span class="row-vendor">{escape(t["merchant"])}<small>{escape(detail)}</small></span>'
+                                f'<span class="row-vendor" title="{escape(t["merchant"], quote=True)}">{escape(t["merchant"])}<small>{escape(detail)}</small></span>'
                                 f'<span class="row-category"><span>{escape(t["category"])}</span></span>'
                                 f'<span class="row-amount {tone}">{sign}{inr(t["amount"], 2)}</span></div>', unsafe_allow_html=True)
                 with action:
