@@ -91,6 +91,19 @@ class BudgetCycleTests(unittest.TestCase):
         self.assertEqual(m['daily_avg'], 10)
         self.assertEqual(m['days_until_broke'], 1192)
 
+    def test_food_silo_is_not_deducted_again_on_dashboard_rerun(self):
+        self.receipt('2026-10-01')
+        db.set_setting('food_silo_balance', 200)
+        db.set_setting('food_silo_last_update', '2026-10-02')
+        db.add_transaction('2026-10-02', 'Lunch', 400, category='Food')
+        first = db.compute_metrics('2026-10-01', date(2026, 10, 2))
+        second = db.compute_metrics('2026-10-01', date(2026, 10, 2))
+        self.assertEqual(first['food_remaining_today'], 150)
+        self.assertEqual(second['food_silo_after_today'], 150)
+        self.assertEqual(float(db.get_setting('food_silo_balance')), 200)
+        db.update_food_silo(date(2026, 10, 3), [])
+        self.assertEqual(float(db.get_setting('food_silo_balance')), 150)
+
     def test_received_money_offsets_burn_without_double_counting_balance(self):
         self.receipt('2026-10-01')
         db.add_transaction('2026-10-01', 'Spending', 1782)
@@ -127,6 +140,28 @@ class BudgetCycleTests(unittest.TestCase):
         txs = pd.DataFrame(db.get_transactions('2026-10-01'))
         fig = burn_rate_line(txs, 350, date(2026, 10, 1), date(2026, 10, 31), date(2026, 10, 2))
         self.assertEqual(list(fig.data[1].y), [1782, 782])
+
+    def test_chart_projects_current_pace_to_selected_date(self):
+        import pandas as pd
+        from dashboard.theme import burn_rate_line
+
+        txs = pd.DataFrame([{'date': '2026-10-01', 'amount': 100}])
+        fig = burn_rate_line(txs, 350, date(2026, 10, 1), date(2026, 10, 20),
+                             date(2026, 10, 2), balance=900)
+        self.assertEqual(len(fig.data), 3)
+        self.assertAlmostEqual(fig.data[0].y[-1], 1000)
+        self.assertEqual(pd.Timestamp(fig.data[2].x[-1]).date(), date(2026, 10, 20))
+        self.assertAlmostEqual(fig.data[2].y[-1], 1000)
+
+    def test_twentieth_follows_receipt_cycle_across_months(self):
+        from dashboard.theme import twentieth_in_cycle
+
+        self.assertEqual(twentieth_in_cycle(date(2026, 9, 25), date(2026, 10, 24)),
+                         date(2026, 10, 20))
+        self.assertEqual(twentieth_in_cycle(date(2026, 12, 25), date(2027, 1, 24)),
+                         date(2027, 1, 20))
+        self.assertEqual(twentieth_in_cycle(date(2026, 10, 1), date(2026, 10, 31)),
+                         date(2026, 10, 20))
 
     def test_late_receipt_does_not_reset_cycle(self):
         self.receipt('2026-08-25')

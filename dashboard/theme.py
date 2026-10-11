@@ -1,6 +1,7 @@
 """Presentation helpers for Am I Cooked? No DB or business logic here."""
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -56,6 +57,16 @@ def inr(x: float, decimals: int = 0) -> str:
     return "-" + out if neg else out
 
 
+def twentieth_in_cycle(start: date, end: date) -> date:
+    """The 20th following the start of this budget cycle."""
+    year, month = start.year, start.month
+    if start.day > 20:
+        month += 1
+        if month == 13:
+            year, month = year + 1, 1
+    return min(date(year, month, 20), end)
+
+
 def spending_donut(cat_sums, inner_label="spent") -> go.Figure:
     """Donut of debit totals by category (a pandas Series, sorted descending)."""
     total = float(cat_sums.sum())
@@ -83,8 +94,8 @@ def spending_donut(cat_sums, inner_label="spent") -> go.Figure:
     return fig
 
 
-def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today) -> go.Figure:
-    """Cumulative spending and food target starting on the receipt date."""
+def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today, balance=None) -> go.Figure:
+    """Cumulative net spending, cash budget pace, and current spending forecast."""
     if txs.empty:
         return go.Figure()
 
@@ -104,10 +115,13 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today) -> go.Figur
     daily_spend = amounts.reindex(dates, fill_value=0).rename_axis('date').reset_index()
     daily_spend['cumulative'] = daily_spend['amount'].cumsum()
 
-    # Create target line data
+    # Cash already spent plus cash on hand is the cycle's available budget.
+    # Recalculate its pace for the selected end date and the latest balance.
     target_dates = pd.date_range(cycle_start, cycle_end, freq='D')
+    target_total = (float(daily_spend['cumulative'].iloc[-1]) + balance) if balance is not None else None
+    pace = target_total / len(target_dates) if target_total is not None else target_daily
     target_df = pd.DataFrame({'date': target_dates,
-                              'target': [(i + 1) * target_daily for i in range(len(target_dates))]})
+                              'target': [(i + 1) * pace for i in range(len(target_dates))]})
 
     fig = go.Figure()
 
@@ -116,9 +130,9 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today) -> go.Figur
         x=target_df['date'],
         y=target_df['target'],
         mode='lines',
-        name='Target',
+        name='Cash budget pace' if balance is not None else 'Target',
         line=dict(color=MUTED, width=2, dash='dash'),
-        hovertemplate="Target: ₹%{y:,.0f}<extra></extra>"
+        hovertemplate="Budget pace: ₹%{y:,.0f}<extra></extra>"
     ))
 
     # Add actual spend line
@@ -131,6 +145,20 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today) -> go.Figur
         marker=dict(size=6, color=SERIES[0]),
         hovertemplate="Net spend: ₹%{y:,.0f}<extra></extra>"
     ))
+
+    if balance is not None and today < cycle_end and today >= cycle_start:
+        days_observed = max(len(daily_spend), 1)
+        daily_average = float(daily_spend['cumulative'].iloc[-1]) / days_observed
+        future = pd.date_range(today, cycle_end, freq='D')
+        current = float(daily_spend['cumulative'].iloc[-1])
+        fig.add_trace(go.Scatter(
+            x=future,
+            y=[current + i * daily_average for i in range(len(future))],
+            mode='lines',
+            name='At current pace',
+            line=dict(color='#D6AD78', width=2, dash='dot'),
+            hovertemplate="Projected spend: ₹%{y:,.0f}<extra></extra>",
+        ))
 
     fig.update_layout(
         height=300,

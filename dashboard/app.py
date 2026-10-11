@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from database_loader import load_database
-from theme import apply_theme, inr, burn_rate_line
+from theme import apply_theme, inr, burn_rate_line, twentieth_in_cycle
 
 db = load_database()
 
@@ -235,6 +235,7 @@ def _shift_month(d: date, delta: int) -> str:
     idx = d.year * 12 + (d.month - 1) + delta
     return f"{idx // 12}-{idx % 12 + 1:02d}"
 
+
 snapshot = db.load_dashboard(today, st.session_state.get('budget_cycle'), TARGET_DAILY)
 month_now = snapshot['month_now']
 receipt_dates = snapshot['receipt_dates']
@@ -266,17 +267,34 @@ for share in shares:
 # ---------------------------------------------------------------- overview
 m = snapshot['metrics']
 balance = m['balance']
-st.caption(f"{m['cycle_start']:%d %b} – {m['cycle_end']:%d %b %Y} · {m['days_remaining']} days remaining")
+deadline = twentieth_in_cycle(m['cycle_start'], m['cycle_end'])
+scope = st.segmented_control('Plan through', ['Full cycle', 'Until 20th'],
+                             default='Full cycle', key='plan_through')
+plan_end = deadline if scope == 'Until 20th' and deadline >= today else m['cycle_end']
+days_to_plan = max((plan_end - today).days + 1, 1)
+planned_allowance = balance / days_to_plan
+st.caption(f"{m['cycle_start']:%d %b} – {m['cycle_end']:%d %b %Y} · "
+           f"Plan through {plan_end:%d %b} · {days_to_plan} days to cover")
+if scope == 'Until 20th' and deadline < today:
+    st.caption('The 20th has passed for this cycle, so this view uses the cycle end.')
 outstanding = sum(max(s['cents'] / 100 - s['repaid'], 0) for s in shares if s['date'] <= str(today))
 summary = [
     ('Current balance', inr(balance) if m['has_balance'] else 'Not set', 'Money available right now'),
-    ('Daily allowance', inr(m['daily_allowance']), f"Across {m['days_remaining']} remaining days"),
+    ('Daily allowance', inr(planned_allowance), f"Across {days_to_plan} days through {plan_end:%d %b}"),
     ('Food left today', inr(m['food_remaining_today']), f"{inr(m['today_food_spend'])} spent · {inr(TARGET_DAILY)} daily budget"),
     ('Owed to you', inr(outstanding), 'Outstanding across all cycles'),
 ]
 st.markdown('<div class="summary-grid">' + ''.join(
     f'<div class="summary-item"><div>{label}</div><strong>{value}</strong><small>{caption}</small></div>'
     for label, value, caption in summary) + '</div>', unsafe_allow_html=True)
+food_silo = m['food_rollover']
+food_after_today = m['food_silo_after_today']
+food_note = ('Today’s food spending is ' + inr(m['today_food_spend'] - TARGET_DAILY)
+             + ' over the daily budget; the silo settles tomorrow.' if m['today_food_spend'] > TARGET_DAILY
+             else 'Unspent food budget moves here tomorrow. This is part of your cash balance.')
+st.markdown(f'<div class="food-silo"><div><span>Food silo</span><strong>{inr(food_silo)}</strong></div>'
+            f'<p>{escape(food_note)} Projected after today: <b>{inr(food_after_today)}</b>.</p></div>',
+            unsafe_allow_html=True)
 if not m['has_balance']:
     st.info('Set your current balance in Settings & maintenance to calculate your daily allowance.')
 
@@ -284,10 +302,11 @@ txs = m['txs']
 chart, breakdown = st.columns([1.7, 1], gap='medium')
 with chart:
     with st.container(border=True):
-        st.subheader('Spending this cycle')
-        st.caption('Your share of expenses, less received credits. Pocket money and split repayments are excluded.')
+        st.subheader('Spending through your plan date')
+        st.caption('Your net spending, a cash budget pace, and a projection from your average so far. Pocket money and split repayments are excluded.')
         if txs:
-            fig = burn_rate_line(pd.DataFrame(txs), TARGET_DAILY, m['cycle_start'], m['cycle_end'], today)
+            fig = burn_rate_line(pd.DataFrame(txs), TARGET_DAILY, m['cycle_start'],
+                                 plan_end, today, balance=balance)
             fig.update_layout(height=230, margin=dict(l=10, r=10, t=5, b=0))
             st.plotly_chart(fig, width="stretch", config={'displayModeBar': False})
         else:
@@ -310,9 +329,9 @@ with breakdown:
 transaction_list(txs, shares_by_tx, month, snapshot['merchant_categories'])
 repayment_editor(shares, received_credits, today)
 with st.expander('Budget details'):
-    st.write(f"Daily allowance: {inr(balance, 2)} ÷ {m['days_remaining']} days = {inr(m['daily_allowance'], 2)}.")
+    st.write(f"Daily allowance through {plan_end:%d %b}: {inr(balance, 2)} ÷ {days_to_plan} days = {inr(planned_allowance, 2)}.")
     st.write(f"Safe to spend: {inr(m['safe_to_spend'])} · Reserved funds: {inr(m['reserved'])} · Food savings: {inr(m['food_rollover'])}.")
-    st.write(f"Safe per meal: {inr(m['safe_per_meal'])} · Extra per day: {inr(m['fun_money'])} · Average net spend: {inr(m['daily_avg'])} per day.")
+    st.write(f"Per meal at this pace: {inr(planned_allowance / 2)} · After the food budget: {inr(planned_allowance - TARGET_DAILY)} per day · Average net spend: {inr(m['daily_avg'])} per day.")
     st.caption('Allowance uses available cash. Money owed to you becomes available only when repaid. The cycle resets when the next received payment is marked Pocket Money.')
 
 # ---------------------------------------------------------------- admin

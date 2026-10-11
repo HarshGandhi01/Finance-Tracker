@@ -376,25 +376,63 @@ def get_transactions(month: str, as_of: date | None = None):
 
 def delete_transaction(tx_id: int):
     with conn() as c:
-        _lock_transaction(c, tx_id)
+        tx = _lock_transaction(c, tx_id)
         if _rows(c, "SELECT 1 FROM split_repayments r JOIN expense_shares s ON s.id=r.share_id "
                     "WHERE s.transaction_id=:i", i=tx_id):
             raise ValueError("Remove linked repayments before deleting this expense.")
-        _save_splits(c, tx_id, [])
+            
+        settings = {r['key']: r['value'] for r in _rows(c, 'SELECT key,value FROM settings')}
+        if tx['category'] == 'Food' and tx['direction'] == 'debit' and tx['date'] < settings.get('food_silo_last_update', ''):
+            old_splits = _rows(c, "SELECT COALESCE(SUM(cents),0) AS n FROM expense_shares WHERE transaction_id=:i", i=tx_id)[0]['n']
+            old_spend = tx['amount'] - old_splits / 100 if old_splits or not tx['is_peer'] else 0
+            if old_spend:
+                value = float(settings.get('food_silo_balance', 0)) + old_spend
+                c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
+                               "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {'v': str(value)})
+
+        c.execute(text("DELETE FROM expense_shares WHERE transaction_id=:i"), {"i": tx_id})
         c.execute(text("DELETE FROM split_repayments WHERE credit_id=:i"), {"i": tx_id})
         c.execute(text("DELETE FROM transactions WHERE id=:i"), {"i": tx_id})
 
 
 def set_peer(tx_id: int, is_peer: bool):
     with conn() as c:
+        tx = _lock_transaction(c, tx_id)
+        if bool(tx['is_peer']) == bool(is_peer):
+            return
+            
+        settings = {r['key']: r['value'] for r in _rows(c, "SELECT key,value FROM settings")}
+        if tx['category'] == 'Food' and tx['direction'] == 'debit' and tx['date'] < settings.get('food_silo_last_update', ''):
+            splits = _rows(c, "SELECT COALESCE(SUM(cents),0) AS n FROM expense_shares WHERE transaction_id=:i", i=tx_id)[0]['n']
+            old_spend = tx['amount'] - splits / 100 if splits or not tx['is_peer'] else 0
+            new_spend = tx['amount'] - splits / 100 if splits or not is_peer else 0
+            correction = old_spend - new_spend
+            if correction:
+                value = float(settings.get('food_silo_balance', 0)) + correction
+                c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
+                               "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {'v': str(value)})
+
         c.execute(text("UPDATE transactions SET is_peer=:p WHERE id=:i"),
                   {"p": int(is_peer), "i": tx_id})
 
 
 def update_category(tx_id: int, new_cat: str):
     with conn() as c:
+        tx = _lock_transaction(c, tx_id)
         if new_cat == 'Pocket Money' and _rows(c, "SELECT 1 FROM split_repayments WHERE credit_id=:i", i=tx_id):
             raise ValueError("A repayment cannot be pocket money.")
+            
+        if tx['category'] != new_cat and tx['direction'] == 'debit':
+            settings = {r['key']: r['value'] for r in _rows(c, 'SELECT key,value FROM settings')}
+            if tx['date'] < settings.get('food_silo_last_update', ''):
+                splits = _rows(c, "SELECT COALESCE(SUM(cents),0) AS n FROM expense_shares WHERE transaction_id=:i", i=tx_id)[0]['n']
+                personal = tx['amount'] - splits / 100 if splits or not tx['is_peer'] else 0
+                correction = personal * (int(tx['category'] == 'Food') - int(new_cat == 'Food'))
+                if correction:
+                    value = float(settings.get('food_silo_balance', 0)) + correction
+                    c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
+                                   "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {'v': str(value)})
+
         c.execute(text("UPDATE transactions SET category=:cat WHERE id=:i"),
                   {"cat": new_cat, "i": tx_id})
 
@@ -687,13 +725,12 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
 
     food_silo = float(settings.get("food_silo_balance", 0.0))
 
-    if today_food_spend <= target_daily:
-        food_remaining_today = target_daily - today_food_spend
-    else:
-        food_remaining_today = (target_daily + food_silo) - today_food_spend
-        # ponytail: update silo immediately when overspending today
-        new_silo = food_silo - (today_food_spend - target_daily)
-        set_setting("food_silo_balance", new_silo)
+    # Today's overspend is settled into the silo tomorrow by update_food_silo.
+    # Reading metrics must never deduct it again on every Streamlit rerun.
+    food_remaining_today = max(0.0, target_daily - today_food_spend)
+    if today_food_spend > target_daily:
+        food_remaining_today = max(0.0, target_daily + food_silo - today_food_spend)
+    food_silo_after_today = food_silo + target_daily - today_food_spend
 
     food_balance = balance
     safe_per_meal = daily_allowance / 2
@@ -713,7 +750,8 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
         days_elapsed=days_elapsed, days_until_broke=days_until_broke,
         safe_per_meal=safe_per_meal, daily_avg=daily_avg, target_daily=target_daily, txs=txs,
         safe_to_spend=safe_to_spend, daily_allowance=daily_allowance, fun_money=fun_money, rollover=rollover,
-        today_food_spend=today_food_spend, food_rollover=food_silo, food_remaining_today=food_remaining_today
+        today_food_spend=today_food_spend, food_rollover=food_silo,
+        food_silo_after_today=food_silo_after_today, food_remaining_today=food_remaining_today
     )
 
 
@@ -729,3 +767,4 @@ def load_dashboard(today, month=None, target_daily=350.0):
                     month_options=options, credits=get_received_credits(today),
                     shares=get_splits(), metrics=compute_metrics(month, today, target_daily),
                     unparsed=get_unparsed(), merchant_categories=get_merchant_categories())
+
