@@ -9,15 +9,15 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
 
-BG = "#101416"
-INK = "#EDF0F2"
-MUTED = "#A1ADB4"
-LINE = "#303A40"
-FONT_DISPLAY = "Arial, sans-serif"
-FONT_BODY = "Arial, sans-serif"
+BG = "#0B0C0A"
+INK = "#F5F5F2"
+MUTED = "#A4AAA6"
+LINE = "#3C4240"
+FONT_DISPLAY = "JetBrains Mono, Consolas, monospace"
+FONT_BODY = "JetBrains Mono, Consolas, monospace"
 
-# Restrained financial workspace palette
-SERIES = ["#83BDA3", "#82988D", "#B7C9BE", "#4E7461", "#98AAA0", "#A1ADB4", "#303A40"]
+# Monochrome categories; amber is reserved for a genuine budget warning.
+SERIES = ["#F5F5F2", "#C6CBC8", "#929A95", "#737C76", "#DEE1DD", "#ABB2AD", "#59635C"]
 
 pio.templates["cooked_dark"] = go.layout.Template(
     layout=go.Layout(
@@ -25,7 +25,7 @@ pio.templates["cooked_dark"] = go.layout.Template(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         colorway=SERIES,
-        hoverlabel=dict(bgcolor="#191F22", bordercolor=LINE, font=dict(family=FONT_BODY, color=INK)),
+        hoverlabel=dict(bgcolor="#171A18", bordercolor=LINE, font=dict(family=FONT_BODY, color=INK)),
     )
 )
 pio.templates.default = "cooked_dark"
@@ -156,7 +156,7 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today, balance=Non
             y=[current + i * daily_average for i in range(len(future))],
             mode='lines',
             name='At current pace',
-            line=dict(color='#D6AD78', width=2, dash='dot'),
+        line=dict(color='#A4AAA6', width=2, dash='dot'),
             hovertemplate="Projected spend: ₹%{y:,.0f}<extra></extra>",
         ))
 

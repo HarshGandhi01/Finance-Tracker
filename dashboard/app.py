@@ -182,7 +182,7 @@ def repayment_editor(shares, received_credits, today):
 
 @st.fragment
 def transaction_list(txs, shares_by_tx, month, rules):
-    with st.container(border=True, key='ledger'):
+    with st.container(border=False, key='ledger'):
         title, search, category = st.columns([2, 2, 1.2], vertical_alignment='center')
         with title:
             st.subheader('Transactions')
@@ -255,16 +255,10 @@ if st.session_state.get('budget_cycle') not in month_options:
 
 brand, add = st.columns([5, 1.2], vertical_alignment='center')
 with brand:
-    st.markdown('<div class="brand">Am I cooked? <span>Personal finance</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand">Am I cooked?</div>', unsafe_allow_html=True)
 with add:
     manual_transaction_editor(today)
-heading, cycle = st.columns([4, 1.3], vertical_alignment='center')
-with heading:
-    st.title('Overview')
-with cycle:
-    month = st.selectbox('Budget cycle', options=month_options,
-                        format_func=lambda key: f'From {key}' if len(key) == 10 else key,
-                        label_visibility='collapsed', key='budget_cycle')
+st.title('Overview')
 if 'notice' in st.session_state:
     st.toast(st.session_state.pop('notice'))
 
@@ -277,13 +271,20 @@ for share in shares:
 # ---------------------------------------------------------------- overview
 m = snapshot['metrics']
 balance = m['balance']
-scope = st.segmented_control('Budget horizon', ['Until money date', 'Full cycle'],
-                             default='Until money date', key='plan_through')
 default_money_date = next_25th(today)
 if st.session_state.get('money_date', default_money_date) <= today:
     st.session_state['money_date'] = default_money_date
-money_date = st.date_input('Ask for money on', value=default_money_date,
-                           min_value=today + timedelta(days=1), key='money_date')
+cycle_col, scope_col, date_col = st.columns(3, gap='medium', vertical_alignment='bottom')
+with cycle_col:
+    month = st.selectbox('Budget cycle', options=month_options,
+                         format_func=lambda key: f'From {key}' if len(key) == 10 else key,
+                         key='budget_cycle')
+with scope_col:
+    scope = st.segmented_control('Budget horizon', ['Until money date', 'Full cycle'],
+                                 default='Until money date', key='plan_through')
+with date_col:
+    money_date = st.date_input('Ask for money on', value=default_money_date,
+                               min_value=today + timedelta(days=1), key='money_date')
 plan_end = money_date - timedelta(days=1) if scope == 'Until money date' else m['cycle_end']
 days_to_plan = max((plan_end - today).days + 1, 1)
 planned_allowance = balance / days_to_plan
@@ -304,7 +305,8 @@ food_after_today = m['food_silo_after_today']
 food_note = ('Today’s food spending is ' + inr(m['today_food_spend'] - TARGET_DAILY)
              + ' over the daily budget; the silo settles tomorrow.' if m['today_food_spend'] > TARGET_DAILY
              else 'Unspent food budget moves here tomorrow. This is part of your cash balance.')
-st.markdown(f'<div class="food-silo"><div><span>Food silo</span><strong>{inr(food_silo)}</strong></div>'
+silo_class = 'food-silo warning' if food_after_today < 0 else 'food-silo'
+st.markdown(f'<div class="{silo_class}"><div><span>Food silo</span><strong>{inr(food_silo)}</strong></div>'
             f'<p>{escape(food_note)} Projected after today: <b>{inr(food_after_today)}</b>.</p></div>',
             unsafe_allow_html=True)
 if not m['has_balance']:
@@ -313,9 +315,9 @@ if not m['has_balance']:
 txs = m['txs']
 chart, breakdown = st.columns([1.7, 1], gap='medium')
 with chart:
-    with st.container(border=True):
-        st.subheader('Spending through your plan date')
-        st.caption('Your net spending, a cash budget pace, and a projection from your average so far. Pocket money and split repayments are excluded.')
+    with st.container(border=False, key='spending_panel'):
+        st.subheader('Net spending')
+        st.caption('Through your plan date. Dotted line projects your current pace; pocket money and split repayments are excluded.')
         if txs:
             fig = burn_rate_line(pd.DataFrame(txs), TARGET_DAILY, m['cycle_start'],
                                  plan_end, today, balance=balance)
@@ -324,7 +326,7 @@ with chart:
         else:
             st.info('Your spending trend will appear after your first transaction.')
 with breakdown:
-    with st.container(border=True):
+    with st.container(border=False, key='category_panel'):
         st.subheader('By category')
         st.caption('Personal spending this cycle')
         totals = {}
