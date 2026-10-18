@@ -25,7 +25,7 @@ def main() -> None:
                 raise RuntimeError(f"App visit failed: HTTP {response.status if response else 'no response'}")
 
             page.wait_for_function(
-                """() => document.querySelector('[data-testid="stApp"]') ||
+                """() => document.querySelector('iframe[title="streamlitApp"]') ||
                     document.body?.innerText.toLowerCase().includes('get this app back up')""",
                 timeout=30_000,
             )
@@ -33,7 +33,8 @@ def main() -> None:
             if wake_button.is_visible():
                 wake_button.click()
 
-            page.locator('[data-testid="stApp"]').wait_for(state="visible", timeout=90_000)
+            app_frame = page.frame_locator('iframe[title="streamlitApp"]')
+            app_frame.locator('[data-testid="stApp"]').wait_for(state="visible", timeout=90_000)
             print(f"Visited {args.url} and opened a Streamlit session")
         finally:
             browser.close()
