@@ -1,6 +1,11 @@
 name: Visit Streamlit app
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/keep-streamlit-awake.yml
+      - scripts/visit_streamlit.py
   schedule:
     - cron: "17 1,5,9,13,17,21 * * *"
   workflow_dispatch:
