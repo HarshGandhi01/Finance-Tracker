@@ -15,6 +15,8 @@ TAIL = re.compile(r"\b(?:Call|SMS BLOCK|If not|To dispute|Not you|Avl|Available)
 END = r"(?=\s+(?:on|UPI|Ref|RRN|Avl|via|for|Call|If)\b|[.;,]|$)"
 MERCHANT_DEBIT = [
     re.compile(r";\s*([^;.\n]+?)\s+credited", re.I),
+    re.compile(r"\bon\s+\d{1,2}[-/ ](?:[A-Za-z]{3}|\d{1,2})[-/ ]\d{2,4}"
+               r"\s+(?:on|at)\s+([A-Za-z0-9@&_ .*\-]+?)" + END, re.I),
     re.compile(r"\b(?:to|at)\s+(?:VPA\s+)?([A-Za-z0-9@&_ .*\-]+?)" + END, re.I),
 ]
 MERCHANT_CREDIT = [
