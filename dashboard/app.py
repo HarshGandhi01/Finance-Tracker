@@ -26,6 +26,60 @@ apply_theme()
 db.init_db()
 
 
+def category_manager():
+    st.subheader("Categories")
+    names = db.get_categories()
+    funds = db.get_funds()
+    with st.form("add_category"):
+        name = st.text_input("New category", max_chars=24)
+        if st.form_submit_button("Add category"):
+            try:
+                db.add_category(name)
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+    for index, name in enumerate(names):
+        locked = name in {"Food", "Pocket Money", "Other"}
+        with st.expander(f"{name} · Locked" if locked else name):
+            up, down = st.columns(2)
+            if up.button("Move up", key=f"up_{name}", disabled=index == 0):
+                db.move_category(name, -1)
+                st.rerun()
+            if down.button("Move down", key=f"down_{name}", disabled=index == len(names) - 1):
+                db.move_category(name, 1)
+                st.rerun()
+            if locked:
+                st.caption("Used by budget calculations. This category cannot be renamed or deleted.")
+                continue
+            with st.form(f"rename_{name}"):
+                new_name = st.text_input("Category name", value=name, max_chars=24)
+                if st.form_submit_button("Rename"):
+                    try:
+                        db.rename_category(name, new_name)
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+            with st.form(f"delete_category_{name}"):
+                options = [n for n in names if n != name]
+                replacement = st.selectbox("Move transactions and vendor rules to", options,
+                                           index=options.index("Other"))
+                delete_fund = False
+                if name in funds:
+                    choice = st.radio("Sinking fund", ["Move fund to replacement", "Delete fund too"])
+                    delete_fund = choice == "Delete fund too"
+                    st.caption("Moving combines this fund with any existing replacement fund.")
+                confirmed = st.checkbox("Confirm category deletion")
+                if st.form_submit_button("Delete category"):
+                    if not confirmed:
+                        st.error("Confirm the deletion first.")
+                    else:
+                        try:
+                            db.delete_category(name, replacement, delete_fund)
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
+
+
 def split_fields(amount, key, existing=None):
     existing = existing or []
     if not st.checkbox("Split with others", value=bool(existing), key=f"split_{key}"):
@@ -112,14 +166,14 @@ def manual_transaction_editor(today):
         m_merchant = st.text_input("Merchant", placeholder="e.g. Hungry")
 
         # Auto-tagging logic
-        default_cat = db.CATEGORIES[0]
+        default_cat = db.get_categories()[0]
         if m_merchant:
             mapped_cat = db.get_merchant_category(m_merchant)
-            if mapped_cat and mapped_cat in db.CATEGORIES:
+            if mapped_cat and mapped_cat in db.get_categories():
                 default_cat = mapped_cat
 
         m_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
-        m_cat = st.selectbox("Category", options=db.CATEGORIES, index=db.CATEGORIES.index(default_cat))
+        m_cat = st.selectbox("Category", options=db.get_categories(), index=db.get_categories().index(default_cat))
         m_dir = st.selectbox("Direction", options=["debit", "credit"])
 
         auto_tag = st.checkbox("Save as default category for this merchant", value=False)
@@ -188,7 +242,7 @@ def transaction_list(txs, shares_by_tx, month, rules):
             st.subheader('Transactions')
         with search:
             query = st.text_input('Search vendor or person', placeholder='Search vendor or person…', label_visibility='collapsed', key='ledger_search')
-        cat_options = list(db.CATEGORIES) + sorted({t['category'] for t in txs if t['category'] not in db.CATEGORIES})
+        cat_options = list(db.get_categories()) + sorted({t['category'] for t in txs if t['category'] not in db.get_categories()})
         with category:
             selected = st.selectbox('Filter by category', ['All categories'] + cat_options, label_visibility='collapsed', key='ledger_category')
         matches = [t for t in txs if query.casefold().strip() in t['merchant'].casefold()
@@ -355,6 +409,7 @@ with st.expander('Budget details'):
 # ---------------------------------------------------------------- admin
 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
 with st.expander("Settings & maintenance"):
+    category_manager()
     new_bal = st.number_input(
         "Adjust current balance (₹)", value=float(round(m["balance"])), step=100.0, format="%.2f", key="admin_bal"
     )

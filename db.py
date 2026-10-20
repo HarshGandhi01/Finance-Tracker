@@ -3,6 +3,7 @@
 import calendar
 import os
 import json
+import re
 from decimal import Decimal, InvalidOperation
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -12,7 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
-CATEGORIES = ["Food", "Protein", "Laundry", "Sports", "Pocket Money", "Outing", "Other"]
+DEFAULT_CATEGORIES = ["Food", "Protein", "Laundry", "Sports", "Pocket Money", "Outing", "Other"]
 
 DEFAULT_FUNDS = {
     "Laundry": 200,
@@ -52,6 +53,9 @@ def _schema():
             upi_ref     TEXT    UNIQUE,
             created_at  TEXT    NOT NULL
         )""",
+        """CREATE TABLE IF NOT EXISTS categories (
+            name TEXT PRIMARY KEY, name_key TEXT NOT NULL UNIQUE,
+            sort_order INTEGER NOT NULL, is_system INTEGER NOT NULL DEFAULT 0)""",
         "CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date)",
         f"""CREATE TABLE IF NOT EXISTS expense_shares (
             id {pk}, transaction_id INTEGER NOT NULL REFERENCES transactions(id),
@@ -138,9 +142,17 @@ def init_db():
         if "sms_hash" not in {col["name"] for col in inspect(c).get_columns("transactions")}:
             c.execute(text("ALTER TABLE transactions ADD COLUMN sms_hash TEXT"))
         c.execute(text("CREATE INDEX IF NOT EXISTS idx_tx_sms_hash ON transactions(sms_hash, created_at)"))
-        for name, amt in DEFAULT_FUNDS.items():
-            c.execute(text("INSERT INTO sinking_funds(name, monthly_amount) VALUES (:n, :a) "
-                           "ON CONFLICT (name) DO NOTHING"), {"n": name, "a": amt})
+        if not _rows(c, "SELECT 1 FROM settings WHERE key='categories_seeded'"):
+            names = DEFAULT_CATEGORIES + [r['category'] for r in _rows(c, "SELECT DISTINCT category FROM transactions")]
+            for order, name in enumerate(names):
+                c.execute(text("INSERT INTO categories(name,name_key,sort_order,is_system) VALUES (:n,:k,:o,:s) "
+                               "ON CONFLICT(name_key) DO NOTHING"),
+                          {'n': name, 'k': name.casefold(), 'o': order,
+                           's': int(name.casefold() in {'food', 'pocket money', 'other'})})
+            for name, amt in DEFAULT_FUNDS.items():
+                c.execute(text("INSERT INTO sinking_funds(name,monthly_amount) VALUES (:n,:a) "
+                               "ON CONFLICT(name) DO NOTHING"), {'n': name, 'a': amt})
+            c.execute(text("INSERT INTO settings(key,value) VALUES ('categories_seeded','1')"))
     _INITED = True
 
 
@@ -240,10 +252,15 @@ def add_transaction(date_, merchant, amount, direction="debit", category="Food",
                     is_peer=False, peer_name=None, status="settled", upi_ref=None, splits=None,
                     apply_merchant_rule=True, sms_hash=None) -> bool:
     upi_ref = (upi_ref or "").strip() or None
-    if direction == 'debit' and apply_merchant_rule:
-        category = get_merchant_category(merchant) or category
     try:
         with conn() as c:
+            _lock_setting(c, "categories_lock")
+            names = _category_names(c)
+            if direction == 'debit' and apply_merchant_rule:
+                raw = _rows(c, "SELECT value FROM settings WHERE key='merchant_category_map'")
+                mapping = _merchant_mapping(raw[0]['value'], names) if raw else {}
+                category = mapping.get(normalize_merchant(merchant), category)
+            category = category if category in names else "Other"
             if sms_hash:
                 _lock_setting(c, "sms_ingest_lock")
                 if recent_duplicate(sms_hash, c):
@@ -426,6 +443,9 @@ def set_peer(tx_id: int, is_peer: bool):
 
 def update_category(tx_id: int, new_cat: str):
     with conn() as c:
+        _lock_setting(c, 'categories_lock')
+        if new_cat not in _category_names(c):
+            raise ValueError('Choose a valid category.')
         tx = _lock_transaction(c, tx_id)
         if new_cat == 'Pocket Money' and _rows(c, "SELECT 1 FROM split_repayments WHERE credit_id=:i", i=tx_id):
             raise ValueError("A repayment cannot be pocket money.")
@@ -485,13 +505,14 @@ def normalize_merchant(merchant):
     return ' '.join(merchant.split()).casefold()
 
 
-def _merchant_mapping(raw):
+def _merchant_mapping(raw, categories=None):
     try:
         mapping = json.loads(raw)
         if not isinstance(mapping, dict):
             return {}
+        names = categories if categories is not None else (get_categories() if mapping else [])
         return {normalize_merchant(k): v for k, v in mapping.items()
-                if isinstance(k, str) and v in CATEGORIES}
+                if isinstance(k, str) and v in names}
     except (json.JSONDecodeError, TypeError):
         return {}
 
@@ -505,7 +526,7 @@ def _save_merchant_rule(c, merchants, category):
     c.execute(text("INSERT INTO settings(key,value) VALUES ('merchant_category_map','{}') "
                    "ON CONFLICT(key) DO NOTHING"))
     c.execute(text("UPDATE settings SET value=value WHERE key='merchant_category_map'"))
-    mapping = _merchant_mapping(_rows(c, "SELECT value FROM settings WHERE key='merchant_category_map'")[0]['value'])
+    mapping = _merchant_mapping(_rows(c, "SELECT value FROM settings WHERE key='merchant_category_map'")[0]['value'], _category_names(c))
     for merchant in merchants:
         key = normalize_merchant(merchant)
         if not key:
@@ -513,7 +534,7 @@ def _save_merchant_rule(c, merchants, category):
         if category is None:
             mapping.pop(key, None)
         else:
-            if category not in CATEGORIES:
+            if category not in _category_names(c):
                 raise ValueError('Choose a valid category.')
             mapping[key] = category
     c.execute(text("UPDATE settings SET value=:v WHERE key='merchant_category_map'"),
@@ -521,6 +542,7 @@ def _save_merchant_rule(c, merchants, category):
 
 def set_merchant_category(merchant: str, category: str):
     with conn() as c:
+        _lock_setting(c, "categories_lock")
         _save_merchant_rule(c, [merchant], category)
 
 
@@ -529,9 +551,10 @@ def edit_transaction(tx_id, merchant, category, remember=None):
     merchant = ' '.join(merchant.split())
     if not merchant:
         raise ValueError('Enter a vendor or person name.')
-    if category not in CATEGORIES:
-        raise ValueError('Choose a valid category.')
     with conn() as c:
+        _lock_setting(c, 'categories_lock')
+        if category not in _category_names(c):
+            raise ValueError('Choose a valid category.')
         tx = _lock_transaction(c, tx_id)
         if category == 'Pocket Money' and _rows(c, 'SELECT 1 FROM split_repayments WHERE credit_id=:i', i=tx_id):
             raise ValueError('A repayment cannot be pocket money.')
@@ -614,6 +637,139 @@ def _lock_setting(c, key, default=""):
     c.execute(text("INSERT INTO settings(key,value) VALUES (:k,:v) "
                    "ON CONFLICT(key) DO NOTHING"), {"k": key, "v": default})
     c.execute(text("UPDATE settings SET value=value WHERE key=:k"), {"k": key})
+
+
+def _category_names(c):
+    return [r["name"] for r in _rows(c, "SELECT name FROM categories ORDER BY sort_order,name")]
+
+
+@_reuse_read
+def get_categories():
+    with conn() as c:
+        return _category_names(c)
+
+
+def _category(c, name):
+    rows = _rows(c, "SELECT * FROM categories WHERE name_key=:k", k=name.strip().casefold())
+    if not rows:
+        raise ValueError("Category no longer exists.")
+    return rows[0]
+
+
+def _new_category_name(c, name, current=None):
+    name = name.strip()
+    if not 1 <= len(name) <= 24:
+        raise ValueError("Use a category name with 1–24 characters.")
+    existing = _rows(c, "SELECT name FROM categories WHERE name_key=:k", k=name.casefold())
+    if existing and existing[0]["name"] != current:
+        raise ValueError("A category with that name already exists.")
+    return name
+
+
+def add_category(name):
+    with conn() as c:
+        _lock_setting(c, "categories_lock")
+        name = _new_category_name(c, name)
+        order = _rows(c, "SELECT COALESCE(MAX(sort_order),-1)+1 AS n FROM categories")[0]["n"]
+        c.execute(text("INSERT INTO categories(name,name_key,sort_order,is_system) VALUES (:n,:k,:o,0)"),
+                  {"n": name, "k": name.casefold(), "o": order})
+
+
+def _move_category_data(c, old, new, delete_fund=False):
+    # Lock affected transactions before changing their category and food accounting.
+    aliases = [r["category"] for r in _rows(c, "SELECT DISTINCT category FROM transactions")
+               if r["category"].casefold() == old.casefold()]
+    for alias in aliases:
+        c.execute(text("UPDATE transactions SET amount=amount WHERE category=:n"), {"n": alias})
+    _lock_setting(c, "food_silo_last_update")
+    _lock_setting(c, "merchant_category_map", "{}")
+    settings = {r["key"]: r["value"] for r in _rows(c, "SELECT key,value FROM settings")}
+    if new == "Food":
+        correction = 0
+        for alias in aliases:
+            correction += _rows(c, "SELECT COALESCE(SUM(amount - COALESCE((SELECT SUM(cents)/100.0 "
+                                "FROM expense_shares WHERE transaction_id=t.id),0)),0) AS n "
+                                "FROM transactions t WHERE category=:n AND direction='debit' "
+                                "AND date<:d AND (is_peer=0 OR EXISTS "
+                                "(SELECT 1 FROM expense_shares WHERE transaction_id=t.id))",
+                                n=alias, d=settings["food_silo_last_update"])[0]["n"]
+        c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
+                       "ON CONFLICT(key) DO UPDATE SET value=excluded.value"),
+                  {"v": str(float(settings.get("food_silo_balance", 0)) - correction)})
+    for alias in aliases:
+        c.execute(text("UPDATE transactions SET category=:n WHERE category=:o"), {"n": new, "o": alias})
+    mapping = json.loads(settings["merchant_category_map"])
+    mapping = {k: (new if isinstance(v, str) and v.casefold() == old.casefold() else v)
+               for k, v in mapping.items()} if isinstance(mapping, dict) else {}
+    c.execute(text("UPDATE settings SET value=:v WHERE key='merchant_category_map'"),
+              {"v": json.dumps(mapping)})
+    funds = _rows(c, "SELECT * FROM sinking_funds")
+    for fund in funds:
+        if fund["name"].casefold() != old.casefold():
+            continue
+        c.execute(text("DELETE FROM sinking_funds WHERE name=:n"), {"n": fund["name"]})
+        if not delete_fund:
+            c.execute(text("INSERT INTO sinking_funds(name,monthly_amount) VALUES (:n,:a) "
+                           "ON CONFLICT(name) DO UPDATE SET monthly_amount=sinking_funds.monthly_amount+excluded.monthly_amount"),
+                      {"n": new, "a": fund["monthly_amount"]})
+    for key, value in settings.items():
+        match = re.fullmatch(r"fund_prior_(\d{4}-\d{2}(?:-\d{2})?)_(.+)", key)
+        if not match or match[2].casefold() != old.casefold():
+            continue
+        c.execute(text("DELETE FROM settings WHERE key=:k"), {"k": key})
+        if not delete_fund:
+            new_key = f"fund_prior_{match[1]}_{new}"
+            existing = _rows(c, "SELECT value FROM settings WHERE key=:k", k=new_key)
+            prior = float(value) + (float(existing[0]["value"]) if existing else 0)
+            c.execute(text("INSERT INTO settings(key,value) VALUES (:k,:v) "
+                           "ON CONFLICT(key) DO UPDATE SET value=excluded.value"),
+                      {"k": new_key, "v": str(prior)})
+
+
+def rename_category(name, new_name):
+    with conn() as c:
+        _lock_setting(c, "categories_lock")
+        category = _category(c, name)
+        if category["is_system"]:
+            raise ValueError("System categories cannot be renamed or deleted.")
+        new_name = _new_category_name(c, new_name, category["name"])
+        if new_name == category["name"]:
+            return
+        _move_category_data(c, category["name"], new_name)
+        c.execute(text("UPDATE categories SET name=:n,name_key=:k WHERE name=:o"),
+                  {"n": new_name, "k": new_name.casefold(), "o": category["name"]})
+
+
+def delete_category(name, replacement="Other", delete_fund=False):
+    with conn() as c:
+        _lock_setting(c, "categories_lock")
+        category = _category(c, name)
+        target = _category(c, replacement)
+        if category["is_system"]:
+            raise ValueError("System categories cannot be renamed or deleted.")
+        if category["name"] == target["name"]:
+            raise ValueError("Choose a different replacement category.")
+        if target["name"] == "Pocket Money" and _rows(c,
+                "SELECT 1 FROM transactions t JOIN split_repayments r ON r.credit_id=t.id "
+                "WHERE LOWER(t.category)=LOWER(:n)", n=category["name"]):
+            raise ValueError("Repayments cannot be moved to Pocket Money.")
+        _move_category_data(c, category["name"], target["name"], delete_fund)
+        c.execute(text("DELETE FROM categories WHERE name=:n"), {"n": category["name"]})
+
+
+def move_category(name, direction):
+    if direction not in (-1, 1):
+        raise ValueError("Choose up or down.")
+    with conn() as c:
+        _lock_setting(c, "categories_lock")
+        names = _category_names(c)
+        index = names.index(_category(c, name)["name"])
+        other = index + direction
+        if not 0 <= other < len(names):
+            return
+        names[index], names[other] = names[other], names[index]
+        for order, item in enumerate(names):
+            c.execute(text("UPDATE categories SET sort_order=:o WHERE name=:n"), {"o": order, "n": item})
 
 
 def match_expected(amount: float, credit_date: date) -> bool:

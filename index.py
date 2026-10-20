@@ -48,6 +48,8 @@ async def log_transaction(request: Request, path: str = ""):
     category = categorize(parsed["merchant"], parsed["direction"])
     if parsed['direction'] == 'debit':
         category = db.get_merchant_category(parsed['merchant']) or category
+    if category not in db.get_categories():
+        category = "Other"
     ok = db.add_transaction(
         parsed["date"], parsed["merchant"], parsed["amount"],
         direction=parsed["direction"], category=category, upi_ref=parsed["upi_ref"], apply_merchant_rule=False,
