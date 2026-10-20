@@ -9,7 +9,7 @@ from contextvars import ContextVar
 from functools import wraps
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
 CATEGORIES = ["Food", "Protein", "Laundry", "Sports", "Pocket Money", "Outing", "Other"]
@@ -134,6 +134,10 @@ def init_db():
     with conn() as c:
         for stmt in _schema():
             c.execute(text(stmt))
+        _lock_setting(c, "schema_lock")
+        if "sms_hash" not in {col["name"] for col in inspect(c).get_columns("transactions")}:
+            c.execute(text("ALTER TABLE transactions ADD COLUMN sms_hash TEXT"))
+        c.execute(text("CREATE INDEX IF NOT EXISTS idx_tx_sms_hash ON transactions(sms_hash, created_at)"))
         for name, amt in DEFAULT_FUNDS.items():
             c.execute(text("INSERT INTO sinking_funds(name, monthly_amount) VALUES (:n, :a) "
                            "ON CONFLICT (name) DO NOTHING"), {"n": name, "a": amt})
@@ -234,19 +238,23 @@ def get_received_credits(today: date) -> list:
 
 def add_transaction(date_, merchant, amount, direction="debit", category="Food",
                     is_peer=False, peer_name=None, status="settled", upi_ref=None, splits=None,
-                    apply_merchant_rule=True) -> bool:
+                    apply_merchant_rule=True, sms_hash=None) -> bool:
     upi_ref = (upi_ref or "").strip() or None
     if direction == 'debit' and apply_merchant_rule:
         category = get_merchant_category(merchant) or category
     try:
         with conn() as c:
+            if sms_hash:
+                _lock_setting(c, "sms_ingest_lock")
+                if recent_duplicate(sms_hash, c):
+                    return False
             result = c.execute(text(
                 "INSERT INTO transactions "
-                "(date, merchant, amount, direction, category, is_peer, peer_name, status, upi_ref, created_at) "
-                "VALUES (:d, :m, :a, :dir, :cat, :peer, :pn, :st, :ref, :ts) RETURNING id"),
+                "(date, merchant, amount, direction, category, is_peer, peer_name, status, upi_ref, created_at, sms_hash) "
+                "VALUES (:d, :m, :a, :dir, :cat, :peer, :pn, :st, :ref, :ts, :hash) RETURNING id"),
                 {"d": str(date_), "m": merchant.strip(), "a": float(amount), "dir": direction,
                  "cat": category, "peer": int(is_peer), "pn": peer_name, "st": status,
-                 "ref": upi_ref, "ts": _now_utc()})
+                 "ref": upi_ref, "ts": _now_utc(), "hash": sms_hash})
             tx_id = result.scalar_one()
             if splits:
                 _save_splits(c, tx_id, splits)
@@ -437,13 +445,15 @@ def update_category(tx_id: int, new_cat: str):
                   {"cat": new_cat, "i": tx_id})
 
 
-def recent_duplicate(date_, merchant, amount, direction) -> bool:
-    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=120)).strftime("%Y-%m-%d %H:%M:%S")
-    with conn() as c:
-        rows = _rows(c, "SELECT 1 AS x FROM transactions WHERE date=:d AND merchant=:m AND amount=:a "
-                        "AND direction=:dir AND created_at >= :cut LIMIT 1",
-                     d=str(date_), m=merchant, a=float(amount), dir=direction, cut=cutoff)
-    return bool(rows)
+def recent_duplicate(sms_hash, connection=None) -> bool:
+    if not sms_hash:
+        return False
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
+    if connection is None:
+        with conn() as c:
+            return recent_duplicate(sms_hash, c)
+    return bool(_rows(connection, "SELECT 1 FROM transactions WHERE sms_hash=:h "
+                      "AND created_at>=:cut LIMIT 1", h=sms_hash, cut=cutoff))
 
 
 def get_funds() -> dict:
