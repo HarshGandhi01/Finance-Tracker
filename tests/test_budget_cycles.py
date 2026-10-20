@@ -101,7 +101,7 @@ class BudgetCycleTests(unittest.TestCase):
         self.assertEqual(first['food_remaining_today'], 0)
         self.assertEqual(second['food_silo_after_today'], 150)
         self.assertEqual(float(db.get_setting('food_silo_balance')), 200)
-        db.update_food_silo(date(2026, 10, 3), [])
+        db.update_food_silo(date(2026, 10, 3))
         self.assertEqual(float(db.get_setting('food_silo_balance')), 150)
 
     def test_allowance_excludes_laundry_reserve(self):

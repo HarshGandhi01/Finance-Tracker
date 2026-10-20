@@ -470,8 +470,12 @@ def set_balance(amount: float):
 
 def set_food_silo_zero():
     """Reset the food silo balance to zero."""
-    set_setting("food_silo_balance", 0.0)
-    set_setting("food_silo_last_update", str(today_ist()))
+    with conn() as c:
+        _lock_setting(c, "food_silo_last_update")
+        c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance','0') "
+                       "ON CONFLICT(key) DO UPDATE SET value=excluded.value"))
+        c.execute(text("UPDATE settings SET value=:v WHERE key='food_silo_last_update'"),
+                  {"v": str(today_ist())})
 
 def get_merchant_category(merchant: str) -> str | None:
     return get_merchant_categories().get(normalize_merchant(merchant))
@@ -644,41 +648,31 @@ def delete_unparsed(uid: int):
         c.execute(text("DELETE FROM unparsed_sms WHERE id=:i"), {"i": uid})
 
 
-def update_food_silo(today: date, transactions: list, target_daily: float = 350.0):
-    """
-    Update the food silo balance based on missed days up to yesterday.
-    This is called at the start of a new day to move remaining budgets into the silo.
-    """
+def update_food_silo(today: date, target_daily: float = 350.0):
+    """Serialize the rollover and re-read its checkpoint inside the transaction."""
     today_str = str(today)
-    last_update_str = get_setting("food_silo_last_update")
-
-    if last_update_str == today_str:
-        return
-
-    current_silo = float(get_setting("food_silo_balance", 0.0))
-
-    if not last_update_str:
-        set_setting("food_silo_last_update", today_str)
-        return
-
-    try:
-        last_update_date = datetime.strptime(last_update_str, "%Y-%m-%d").date()
-    except ValueError:
-        set_setting("food_silo_last_update", today_str)
-        return
-
-    if last_update_date < today:
-        with conn() as c:
-            spend_rows = _rows(c, "SELECT SUM(amount - COALESCE((SELECT SUM(cents)/100.0 "
-                                  "FROM expense_shares WHERE transaction_id=t.id),0)) as s FROM transactions t "
-                                  "WHERE date>=:s AND date<:e AND category='Food' "
-                                  "AND direction='debit' AND (is_peer=0 OR EXISTS "
-                                  "(SELECT 1 FROM expense_shares WHERE transaction_id=t.id))",
-                                  s=str(last_update_date), e=today_str)
-        current_silo += target_daily * (today - last_update_date).days - float(spend_rows[0]["s"] or 0.0)
-
-    set_setting("food_silo_balance", current_silo)
-    set_setting("food_silo_last_update", today_str)
+    with conn() as c:
+        _lock_setting(c, "food_silo_last_update")
+        settings = {r['key']: r['value'] for r in _rows(c, "SELECT key,value FROM settings "
+                    "WHERE key IN ('food_silo_last_update','food_silo_balance')")}
+        last = settings['food_silo_last_update']
+        try:
+            last_date = date.fromisoformat(last)
+        except ValueError:
+            last_date = None
+        if last_date is not None and last_date >= today:
+            return
+        current_silo = float(settings.get('food_silo_balance', 0))
+        if last_date is not None:
+            spending = _rows(c, "SELECT SUM(amount - COALESCE((SELECT SUM(cents)/100.0 "
+                             "FROM expense_shares WHERE transaction_id=t.id),0)) AS s FROM transactions t "
+                             "WHERE date>=:s AND date<:e AND category='Food' AND direction='debit' "
+                             "AND (is_peer=0 OR EXISTS (SELECT 1 FROM expense_shares WHERE transaction_id=t.id))",
+                             s=str(last_date), e=today_str)[0]['s'] or 0
+            current_silo += target_daily * (today - last_date).days - float(spending)
+        c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
+                       "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {'v': str(current_silo)})
+        c.execute(text("UPDATE settings SET value=:v WHERE key='food_silo_last_update'"), {'v': today_str})
 
 
 def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dict:
@@ -780,7 +774,7 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
 
 def load_dashboard(today, month=None, target_daily=350.0):
     """Load fresh data with one shared read connection and no persistent cache."""
-    update_food_silo(today, [], target_daily)
+    update_food_silo(today, target_daily)
     with dashboard_reads():
         month_now = get_current_cycle_month(today)
         receipt_dates = get_pocket_money_dates(today)

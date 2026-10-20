@@ -90,7 +90,7 @@ class SplitTests(unittest.TestCase):
         db.add_transaction('2026-09-30', 'Dinner', 600)
         tx_id = db.get_transactions('2026-09')[0]['id']
         db.set_setting('food_silo_last_update', '2026-09-30')
-        db.update_food_silo(date(2026, 10, 1), [])
+        db.update_food_silo(date(2026, 10, 1))
         self.assertEqual(float(db.get_setting('food_silo_balance')), -250)
         db.set_splits(tx_id, [('Sam', 350)])
         self.assertEqual(float(db.get_setting('food_silo_balance')), 100)

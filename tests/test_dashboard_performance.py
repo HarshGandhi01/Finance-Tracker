@@ -40,7 +40,7 @@ class DashboardPerformanceTests(unittest.TestCase):
     def test_refresh_has_bounded_round_trips_and_reads_fresh_data(self):
         first = db.load_dashboard(self.today)
         self.assertEqual(len(self.begins), 2)
-        self.assertLessEqual(len(self.queries), 11)
+        self.assertLessEqual(len(self.queries), 13)
         self.assertEqual(first['metrics']['balance'], 13000)
         db.add_transaction(self.today, 'Imported lunch', 300)
         second = db.load_dashboard(self.today)
@@ -54,7 +54,7 @@ class DashboardPerformanceTests(unittest.TestCase):
         db.add_transaction('2026-09-02', 'Dinner', 600, splits=[('Sam', 350)])
         db.add_transaction('2026-10-02', 'Lunch', 100)
         self.queries.clear()
-        db.update_food_silo(self.today, [])
+        db.update_food_silo(self.today)
         spends = [q for q in self.queries if 'SELECT SUM(amount' in q]
         self.assertEqual(len(spends), 1)
         self.assertEqual(float(db.get_setting('food_silo_balance')), 32 * 350 - 350)
