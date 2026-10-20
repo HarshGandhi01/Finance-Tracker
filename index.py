@@ -59,7 +59,7 @@ async def log_transaction(request: Request, path: str = ""):
 
     matched = False
     if parsed["direction"] == "credit":
-        matched = db.match_expected(parsed["amount"], db.get_current_cycle_month(parsed["date"]))
+        matched = db.match_expected(parsed["amount"], parsed["date"])
 
     return {"status": "logged", "merchant": parsed["merchant"], "amount": parsed["amount"],
             "direction": parsed["direction"], "category": category, "matched_expected": matched}

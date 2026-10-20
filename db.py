@@ -595,12 +595,27 @@ def receive_expected(exp_id: int, received_on):
     delete_expected(exp_id)
 
 
-def match_expected(amount: float, month: str) -> bool:
-    for e in get_expected(month):
-        if abs(e["amount"] - amount) < 0.01:
-            delete_expected(e["id"])
-            return True
-    return False
+def _lock_setting(c, key, default=""):
+    """Portable row lock: SQLite serializes writers, Postgres locks this row."""
+    c.execute(text("INSERT INTO settings(key,value) VALUES (:k,:v) "
+                   "ON CONFLICT(key) DO NOTHING"), {"k": key, "v": default})
+    c.execute(text("UPDATE settings SET value=value WHERE key=:k"), {"k": key})
+
+
+def match_expected(amount: float, credit_date: date) -> bool:
+    credit_date = date.fromisoformat(str(credit_date))
+    with conn() as c:
+        _lock_setting(c, "expected_income_lock")
+        candidates = _rows(c, "SELECT * FROM expected_income WHERE date>=:s AND date<=:e",
+                           s=str(credit_date - timedelta(days=5)),
+                           e=str(credit_date + timedelta(days=5)))
+        candidates = [e for e in candidates if money_cents(e["amount"]) == money_cents(amount)]
+        if not candidates:
+            return False
+        closest = min(candidates, key=lambda e: (
+            abs((date.fromisoformat(e["date"]) - credit_date).days), e["date"], e["id"]))
+        c.execute(text("DELETE FROM expected_income WHERE id=:i"), {"i": closest["id"]})
+        return True
 
 
 def add_unparsed(raw: str):
