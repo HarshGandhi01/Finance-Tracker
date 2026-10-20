@@ -50,7 +50,7 @@ class BudgetCycleTests(unittest.TestCase):
         self.assertEqual(m['daily_avg'], 250)  # Eight days, including today.
         self.assertEqual(m['days_remaining'], 23)
         self.assertEqual(m['balance'], 7355)
-        self.assertAlmostEqual(m['daily_allowance'], m['balance'] / 23)
+        self.assertAlmostEqual(m['daily_allowance'], m['safe_to_spend'] / 23)
         self.assertAlmostEqual(m['fun_money'], m['daily_allowance'] - 350)
 
     def test_next_receipt_closes_previous_cycle_without_overlap(self):
@@ -73,9 +73,9 @@ class BudgetCycleTests(unittest.TestCase):
         m = db.compute_metrics('2026-10-01', date(2026, 10, 2))
         self.assertEqual(m['days_remaining'], 30)
         self.assertEqual(m['days_elapsed'], 2)
-        self.assertAlmostEqual(m['daily_allowance'], 7355 / 30)
-        self.assertAlmostEqual(m['fun_money'], 7355 / 30 - 350)
-        self.assertAlmostEqual(m['safe_per_meal'], 7355 / 60)
+        self.assertAlmostEqual(m['daily_allowance'], m['safe_to_spend'] / 30)
+        self.assertAlmostEqual(m['fun_money'], m['safe_to_spend'] / 30 - 350)
+        self.assertAlmostEqual(m['safe_per_meal'], m['safe_to_spend'] / 60)
         self.assertEqual(m['daily_avg'], 891)
         self.assertAlmostEqual(m['days_until_broke'], 7355 / 891)
         self.assertLess(m['safe_to_spend'], m['balance'])
@@ -104,6 +104,14 @@ class BudgetCycleTests(unittest.TestCase):
         db.update_food_silo(date(2026, 10, 3), [])
         self.assertEqual(float(db.get_setting('food_silo_balance')), 150)
 
+    def test_allowance_excludes_laundry_reserve(self):
+        self.receipt('2026-10-02')
+        db.set_balance(3300)
+        m = db.compute_metrics('2026-10-02', date(2026, 10, 2))
+        self.assertEqual(m['reserved'], 200)
+        self.assertEqual(m['safe_to_spend'], 3100)
+        self.assertEqual(m['daily_allowance'], 100)
+
     def test_food_remaining_never_increases_with_spending(self):
         self.receipt('2026-10-01')
         db.set_setting('food_silo_balance', 1000)
@@ -123,7 +131,7 @@ class BudgetCycleTests(unittest.TestCase):
         self.assertEqual(m['burn'], 782)
         self.assertEqual(m['daily_avg'], 391)
         self.assertEqual(m['balance'], 8000)
-        self.assertAlmostEqual(m['daily_allowance'], 8000 / 30)
+        self.assertAlmostEqual(m['daily_allowance'], m['safe_to_spend'] / 30)
         self.assertAlmostEqual(m['days_until_broke'], 8000 / 391)
         db.add_transaction('2026-10-02', 'Refund', 782, direction='credit', category='Other')
         self.assertIsNone(db.compute_metrics('2026-10-01', date(2026, 10, 2))['days_until_broke'])

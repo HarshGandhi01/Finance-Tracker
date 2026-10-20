@@ -287,7 +287,7 @@ with date_col:
                                min_value=today + timedelta(days=1), key='money_date')
 plan_end = money_date - timedelta(days=1) if scope == 'Until money date' else m['cycle_end']
 days_to_plan = max((plan_end - today).days + 1, 1)
-planned_allowance = balance / days_to_plan
+planned_allowance = m['safe_to_spend'] / days_to_plan
 st.caption(f"{m['cycle_start']:%d %b} – {m['cycle_end']:%d %b %Y} · "
            f"Cover through {plan_end:%d %b} · {days_to_plan} days to cover")
 outstanding = sum(max(s['cents'] / 100 - s['repaid'], 0) for s in shares if s['date'] <= str(today))
@@ -350,7 +350,7 @@ with st.expander('Budget details'):
     st.write(f"Daily allowance through {plan_end:%d %b}: {inr(balance, 2)} Ã· {days_to_plan} days = {inr(planned_allowance, 2)}.")
     st.write(f"Safe to spend: {inr(m['safe_to_spend'])} · Reserved funds: {inr(m['reserved'])} · Food savings: {inr(m['food_rollover'])}.")
     st.write(f"Per meal at this pace: {inr(planned_allowance / 2)} · After the food budget: {inr(planned_allowance - TARGET_DAILY)} per day · Average net spend: {inr(m['daily_avg'])} per day.")
-    st.caption('Allowance uses available cash. Money owed to you becomes available only when repaid. The cycle resets when the next received payment is marked Pocket Money.')
+    st.caption('Allowance uses cash minus reserved funds. Money owed to you becomes available only when repaid. The cycle resets when the next received payment is marked Pocket Money.')
 
 # ---------------------------------------------------------------- admin
 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)

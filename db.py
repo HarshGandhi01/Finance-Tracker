@@ -713,7 +713,7 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     meals_remaining = days_remaining * 2
 
     # The current cash balance already includes money carried over from earlier cycles.
-    daily_allowance = balance / days_remaining
+    daily_allowance = safe_to_spend / days_remaining
     fun_money = daily_allowance - target_daily
 
     today_str = str(today)
