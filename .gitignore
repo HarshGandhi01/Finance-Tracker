@@ -1,72 +1,57 @@
-# --- SENSITIVE DATA ---
-# Never push financial statements or personal documents
+# Financial documents and local data
 *.pdf
 *.csv
 *.xlsx
 *.json
-# Except for config files we explicitly allow
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.sqlite-journal
 
-# --- SECRETS & KEYS ---
-# Environment variables and secret keys
+# Secrets
 .env
-env
 .env.local
 .env.*.local
+env
 secrets.py
+.streamlit/secrets.toml
 *.pem
 *.key
 CLAUDE-SECURITY-*/
 
-#Python
+# Python and local dependencies
 __pycache__/
 *.py[cod]
 *$py.class
-env/
-venv/
-.env
-
-/Skills
-
-# Database
-*.db
-*.sqlite
-
-# IDEs/Tools
-.vscode/
-.idea/
-.claude/
-
-# OS
-.DS_Store
-Thumbs.d
-# --- DATABASE ---
-# Local SQLite databases
-*.db
-*.sqlite3
-
-# --- PYTHON / VENV ---
-# Virtual environments
 .venv/
 venv/
 ENV/
 env/
-__pycache__/
-*.py[cod]
-*$py.class
-
-# --- STREAMLIT ---
-
-
-# --- OS SPECIFIC ---
-.DS_Store
-Thumbs.db
+.pytest_cache/
 .test-deps/
-.vercel/
-.claude/
+.local-deps/
+.local-wheels/
 
-# --- LOCAL TOOLS & PREVIEWS ---
-/.freebuff/
+# Local tooling
+/Skills/
+.vscode/
+.idea/
+.claude/
+.freebuff/
+.vercel/
 /CLAUDE.md
+/screenshot_app.py
+
+# Private logs, handovers, and previews
+/MacroDroidLog.txt
+/session_handover.txt
+/HANDOVER.md
+/DEPLOYMENT_PROGRESS.md
 /home_desktop.png
 /home_mobile.png
-/screenshot_app.py
+/dashboard/assets/styles.css`
+
+# OS files
+.DS_Store
+Thumbs.db
