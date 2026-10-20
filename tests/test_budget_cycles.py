@@ -156,7 +156,7 @@ class BudgetCycleTests(unittest.TestCase):
         db.add_transaction('2026-10-02', 'Repayment', 1000, direction='credit')
         txs = pd.DataFrame(db.get_transactions('2026-10-01'))
         fig = burn_rate_line(txs, 350, date(2026, 10, 1), date(2026, 10, 31), date(2026, 10, 2))
-        self.assertEqual(list(fig.data[1].y), [1782, 782])
+        self.assertEqual(list(fig.data[0].y), [1782, 782])
 
     def test_chart_projects_current_pace_to_selected_date(self):
         import pandas as pd
@@ -165,10 +165,10 @@ class BudgetCycleTests(unittest.TestCase):
         txs = pd.DataFrame([{'date': '2026-10-01', 'amount': 100}])
         fig = burn_rate_line(txs, 350, date(2026, 10, 1), date(2026, 10, 20),
                              date(2026, 10, 2), balance=900)
-        self.assertEqual(len(fig.data), 3)
-        self.assertAlmostEqual(fig.data[0].y[-1], 1000)
-        self.assertEqual(pd.Timestamp(fig.data[2].x[-1]).date(), date(2026, 10, 20))
-        self.assertAlmostEqual(fig.data[2].y[-1], 1000)
+        self.assertEqual(len(fig.data), 2)
+        self.assertAlmostEqual(fig.data[0].y[-1], 100)
+        self.assertEqual(pd.Timestamp(fig.data[1].x[-1]).date(), date(2026, 10, 20))
+        self.assertAlmostEqual(fig.data[1].y[-1], 1000)
 
     def test_money_date_defaults_to_next_25th(self):
         from dashboard.theme import next_25th
@@ -244,8 +244,8 @@ class BudgetCycleTests(unittest.TestCase):
         fig = burn_rate_line(pd.DataFrame([{'date': '2026-10-01', 'amount': 100}]),
                              350, date(2026, 9, 25), date(2026, 10, 24), date(2026, 10, 2))
         self.assertEqual(pd.Timestamp(fig.data[0].x[0]).date(), date(2026, 9, 25))
-        self.assertEqual(fig.data[0].y[0], 350)
-        self.assertEqual(list(fig.data[1].y), [0, 0, 0, 0, 0, 0, 100, 100])
+        self.assertEqual(fig.data[0].y[0], 0)
+        self.assertEqual(list(fig.data[0].y), [0, 0, 0, 0, 0, 0, 100, 100])
 
 
 class DashboardTests(unittest.TestCase):
@@ -285,9 +285,11 @@ class DashboardTests(unittest.TestCase):
                 finally:
                     sys.modules['db'] = original_db
                 self.assertEqual(list(app.exception), [])
+                app.switch_page('settings.py').run()
                 button = next(b for b in app.button if b.label == 'Mark as pocket money')
                 button.click().run()
                 self.assertEqual(list(app.exception), [])
+                app.switch_page('overview.py').run()
                 cycle = next(s for s in app.selectbox if s.label == 'Budget cycle')
                 self.assertEqual(cycle.value, str(today))
                 self.assertEqual(db.get_pocket_money_dates(today), [str(today)])

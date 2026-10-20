@@ -128,6 +128,7 @@ def test_category_management_ui(tmp_path):
         try:
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "dashboard/app.py"),
                                    default_timeout=30).run()
+            app.switch_page("settings.py").run()
             next(t for t in app.text_input if t.label == "New category").set_value("Books")
             next(b for b in app.button if b.label == "Add category").click().run()
             assert not app.exception

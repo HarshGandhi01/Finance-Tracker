@@ -106,7 +106,7 @@ class SplitTests(unittest.TestCase):
         self.assertEqual(self.metrics()['fund_spent']['Laundry'], 250)
         fig = burn_rate_line(pd.DataFrame(db.get_transactions('2026-10')), 350,
                              date(2026, 10, 1), date(2026, 10, 31), date(2026, 10, 3))
-        self.assertEqual(list(fig.data[1].y), [0, 0, 250])
+        self.assertEqual(list(fig.data[0].y), [0, 0, 250])
 
     def test_reject_invalid_repayments_and_split_credits(self):
         with self.assertRaises(ValueError):

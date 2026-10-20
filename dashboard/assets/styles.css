@@ -1,83 +1,35 @@
-/* Industrial ledger: one type family, hard rules, no decorative surfaces. */
-:root { --bg:#0b0c0a; --ink:#f5f5f2; --muted:#a4aaa6; --line:#3c4240; --field:#171a18; --signal:#ffb800; }
-html, body, .stApp, [data-testid="stAppViewContainer"] { background:var(--bg); color:var(--ink); font-family:"JetBrains Mono",Consolas,"Liberation Mono",monospace; }
-[data-testid="stHeader"] { background:transparent; }
-.block-container { max-width:1320px; padding:2rem 2.4rem 3rem; }
-h1,h2,h3,p,button,input,select,textarea,label,small { font-family:"JetBrains Mono",Consolas,"Liberation Mono",monospace!important; }
-h1 { font-size:32px!important; font-weight:700!important; letter-spacing:-1.7px; padding:.3rem 0!important; }
-h3 { font-size:17px!important; font-weight:700!important; letter-spacing:-.5px; padding:0!important; }
-[data-testid="stCaptionContainer"] p { color:var(--muted); font-size:12px; line-height:1.55; }
-.brand { font-size:18px; font-weight:700; letter-spacing:-.7px; padding:4px 0 22px; }
-.summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border-block:1px solid var(--line); margin:16px 0 0; }
-.summary-item { min-width:0; padding:21px 24px 23px; border-right:1px solid var(--line); }
-.summary-item:first-child { padding-left:0; }
-.summary-item:last-child { border-right:0; }
-.summary-item>div { color:var(--muted); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; }
-.summary-item strong { display:block; margin:11px 0 9px; font-size:30px; font-weight:700; line-height:1.2; letter-spacing:-1.7px; font-variant-numeric:tabular-nums; }
-.summary-item:first-child strong { font-size:43px; line-height:1.08; }
-.summary-item small { color:var(--muted); font-size:11px; line-height:1.5; }
-.food-silo { display:flex; align-items:baseline; justify-content:space-between; gap:20px; padding:17px 0; margin:0 0 15px; border-bottom:1px solid var(--line); }
-.food-silo>div { display:flex; align-items:baseline; gap:19px; white-space:nowrap; }
-.food-silo span { color:var(--muted); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; }
-.food-silo strong { font-size:24px; font-variant-numeric:tabular-nums; letter-spacing:-1px; }
-.food-silo.warning strong,.food-silo.warning b { color:var(--signal); }
-.food-silo p { margin:0; color:var(--muted); font-size:11px; line-height:1.5; text-align:right; }
-.food-silo b { color:var(--ink); }
-[data-testid="stVerticalBlock"] { border-radius:0!important; }
-.st-key-spending_panel,.st-key-category_panel,.st-key-ledger { border-top:1px solid var(--line); padding-top:14px; }
-[data-testid="stExpander"] { background:transparent; border-color:var(--line); border-radius:0; }
-[data-testid="stExpander"] summary { font-size:12px; }
-button,input,[role="group"],[data-testid="stExpander"],[data-testid="stExpander"] *,[data-testid="stSelectbox"] *,[data-testid="stDateInput"] * { border-radius:0!important; }
-[data-testid="stButton"] button,[data-testid="stPopover"] button { border-radius:0!important; box-shadow:none!important; font-size:12px; min-height:36px; }
-button[kind="primary"] { background:var(--ink); border-color:var(--ink); color:var(--bg); }
-button:hover { border-color:var(--ink)!important; }
-[data-baseweb="input"],[data-baseweb="select"]>div { background:var(--field)!important; border-color:var(--line)!important; border-radius:0!important; }
-[data-baseweb="popover"] { color:var(--ink); }
-.category-line { display:flex; gap:16px; align-items:baseline; font-size:12px; margin-top:16px; }
-.category-line span { flex:1; }
-.category-line b { font-weight:700; font-variant-numeric:tabular-nums; }
-.category-line small { width:36px; color:var(--muted); text-align:right; }
-.category-track { height:3px; background:#303633; margin:8px 0 15px; overflow:hidden; }
-.category-track span { display:block; height:100%; background:var(--ink); }
-.st-key-ledger { background:transparent; }
-.ledger-head { display:grid; grid-template-columns:1fr 3fr 1.6fr 1.6fr .8fr; padding:11px 10px; border-block:1px solid var(--line); background:transparent; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
-.ledger-head span:nth-child(4) { text-align:right; }
-.ledger-row { display:grid; grid-template-columns:1fr 3fr 1.6fr 1.6fr; align-items:center; gap:8px; min-height:51px; padding:4px 10px; font-size:13px; }
-[class*="st-key-ledger_row_"] { border-bottom:1px solid var(--line); }
-[class*="st-key-ledger_row_"] [data-testid="stHorizontalBlock"] { gap:8px; }
-[class*="st-key-ledger_row_"] [data-testid="stColumn"]:first-child { min-height:51px; }
-[class*="st-key-ledger_row_"] button { background:transparent; border-color:transparent; color:var(--ink); }
-.row-date { color:var(--muted); font-size:12px; }
-.row-vendor { min-width:0; font-weight:600; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-.row-vendor small { display:block; font-size:11px; color:var(--muted); font-weight:400; margin-top:3px; overflow:hidden; text-overflow:ellipsis; }
-.row-category>span { border:1px solid var(--line); padding:3px 7px; font-size:11px; white-space:nowrap; }
-.row-amount { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
-.credit { color:var(--ink); }
-:focus-visible { outline:2px solid var(--signal)!important; outline-offset:2px; }
-[class*="st-key-ledger_row_"] button { white-space:nowrap; padding:4px 8px; }
-[data-testid="stToolbar"] { opacity:.3; }
-[data-testid="stToolbar"]:hover { opacity:1; }
-@media(max-width:740px) {
- .block-container { padding:1.2rem 1rem 2rem; }
- .brand { font-size:17px; }
- .summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
- .summary-item { padding:17px 11px; border-bottom:1px solid var(--line); }
- .summary-item:first-child { padding-left:0; }
- .summary-item:nth-child(2) { border-right:0; }
- .summary-item:nth-child(n+3) { border-bottom:0; }
- .summary-item:nth-child(3) { padding-left:0; }
- .summary-item strong,.summary-item:first-child strong { font-size:27px; }
- .summary-item small { font-size:11px; }
- .food-silo { display:block; }
- .food-silo p { margin-top:8px; text-align:left; }
- .ledger-head { display:none; }
- .ledger-row { grid-template-columns:1fr auto; gap:4px; padding:6px 0; }
- .row-date { grid-column:1; font-size:10px; }
- .row-vendor { grid-column:1; grid-row:2; }
- .row-category { grid-column:1; grid-row:3; padding:4px 0; }
- .row-amount { grid-column:2; grid-row:2; font-size:11px; }
- [class*="st-key-ledger_row_"] [data-testid="stHorizontalBlock"] { flex-wrap:nowrap!important; }
- [class*="st-key-ledger_row_"] [data-testid="stColumn"]:first-child { min-width:0!important; min-height:107px; width:calc(100% - 74px)!important; flex:1 1 auto!important; }
- [class*="st-key-ledger_row_"] [data-testid="stColumn"]:last-child { min-width:70px!important; width:70px!important; flex:0 0 70px!important; }
+/* Streamlit owns widget styling and both themes. Only our text layouts live here. */
+.stApp { font-variant-numeric: tabular-nums; }
+.block-container { max-width: 1120px; padding-top: 5rem; padding-bottom: 3rem; }
+.brand { font-size: 1.05rem; font-weight: 650; margin-bottom: 1.3rem; }
+.budget-status { font-size: 1rem; margin-bottom: .4rem; }
+.comfortable, .credit { color: #61aa85; }
+.cooked, .debit { color: #da8585; }
+.tight { color: inherit; }
+h1.allowance { font-size: clamp(2rem, 4vw, 3rem); font-weight: 650; line-height: 1.2; margin: 0; padding: 0 0 .6rem; }
+.allowance .plan-until { white-space: nowrap; }
+.summary-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1.5rem; margin: 1rem 0 1.5rem; }
+.summary-item strong { display: block; font-size: 1.45rem; font-weight: 600; }
+.summary-item div { font-size: .9rem; margin: .2rem 0; }
+.summary-item small, .row-vendor small { display: block; opacity: .65; font-size: .78rem; line-height: 1.5; }
+.category-line { display: flex; align-items: baseline; gap: .8rem; margin-top: 1rem; font-size: .9rem; }
+.category-line span { flex: 1; }
+.category-line b { font-weight: 500; }
+.category-line small { opacity: .6; }
+.category-track { height: 3px; background: rgba(128,128,128,.12); margin: .6rem 0; }
+.category-track span { display: block; height: 100%; background: #7da5de; }
+.ledger-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .75rem; align-items: center; min-height: 52px; }
+.row-vendor { min-width: 0; font-size: .95rem; }
+.row-vendor > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-amount { text-align: right; white-space: nowrap; font-size: .95rem; }
+/* Keep the native icon action beside its ledger row even on a narrow phone. */
+[class*="st-key-ledger_row_"] > div { min-width: 0; }
+[class*="st-key-ledger_row_"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap; }
+@media (max-width: 600px) {
+  .block-container { padding-left: 1rem; padding-right: 1rem; }
+  h1.allowance { font-size: 2.2rem; }
+  .allowance .plan-until { display: block; font-size: 1.15rem; margin-top: .4rem; font-weight: 400; }
+  .summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.3rem 1rem; }
+  .summary-item strong { font-size: 1.3rem; }
+  .row-vendor, .row-amount { font-size: .88rem; }
 }
-@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }
