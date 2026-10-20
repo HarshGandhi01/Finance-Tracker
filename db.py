@@ -728,8 +728,6 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     # Today's overspend is settled into the silo tomorrow by update_food_silo.
     # Reading metrics must never deduct it again on every Streamlit rerun.
     food_remaining_today = max(0.0, target_daily - today_food_spend)
-    if today_food_spend > target_daily:
-        food_remaining_today = max(0.0, target_daily + food_silo - today_food_spend)
     food_silo_after_today = food_silo + target_daily - today_food_spend
 
     food_balance = balance

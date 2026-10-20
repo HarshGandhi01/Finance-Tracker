@@ -98,11 +98,20 @@ class BudgetCycleTests(unittest.TestCase):
         db.add_transaction('2026-10-02', 'Lunch', 400, category='Food')
         first = db.compute_metrics('2026-10-01', date(2026, 10, 2))
         second = db.compute_metrics('2026-10-01', date(2026, 10, 2))
-        self.assertEqual(first['food_remaining_today'], 150)
+        self.assertEqual(first['food_remaining_today'], 0)
         self.assertEqual(second['food_silo_after_today'], 150)
         self.assertEqual(float(db.get_setting('food_silo_balance')), 200)
         db.update_food_silo(date(2026, 10, 3), [])
         self.assertEqual(float(db.get_setting('food_silo_balance')), 150)
+
+    def test_food_remaining_never_increases_with_spending(self):
+        self.receipt('2026-10-01')
+        db.set_setting('food_silo_balance', 1000)
+        remaining = []
+        for amount in (349, 1, 1, 1000):
+            db.add_transaction('2026-10-02', 'Tea', amount)
+            remaining.append(db.compute_metrics('2026-10-01', date(2026, 10, 2))['food_remaining_today'])
+        self.assertEqual(remaining, [1, 0, 0, 0])
 
     def test_received_money_offsets_burn_without_double_counting_balance(self):
         self.receipt('2026-10-01')
