@@ -99,7 +99,10 @@ class SplitTests(unittest.TestCase):
 
     def test_chart_and_fund_use_personal_share(self):
         import pandas as pd
+        from sqlalchemy import text
         from dashboard.theme import burn_rate_line
+        with db.conn() as c:
+            c.execute(text("INSERT INTO sinking_funds(name,monthly_amount) VALUES ('Laundry',200) ON CONFLICT(name) DO NOTHING"))
         self.expense(category='Laundry', splits=[('Sam', 350)])
         db.record_repayment(db.get_splits()[0]['id'], '2026-10-03', 350)
         db.set_setting('fund_prior_2026-10_Laundry', 0)

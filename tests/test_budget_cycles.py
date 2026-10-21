@@ -73,12 +73,12 @@ class BudgetCycleTests(unittest.TestCase):
         m = db.compute_metrics('2026-10-01', date(2026, 10, 2))
         self.assertEqual(m['days_remaining'], 30)
         self.assertEqual(m['days_elapsed'], 2)
-        self.assertAlmostEqual(m['daily_allowance'], m['safe_to_spend'] / 30)
-        self.assertAlmostEqual(m['fun_money'], m['safe_to_spend'] / 30 - 350)
-        self.assertAlmostEqual(m['safe_per_meal'], m['safe_to_spend'] / 60)
+        self.assertAlmostEqual(m['daily_allowance'], m['balance'] / 30)
+        self.assertAlmostEqual(m['fun_money'], m['balance'] / 30 - 350)
+        self.assertAlmostEqual(m['safe_per_meal'], m['balance'] / 60)
         self.assertEqual(m['daily_avg'], 891)
         self.assertAlmostEqual(m['days_until_broke'], 7355 / 891)
-        self.assertLess(m['safe_to_spend'], m['balance'])
+        self.assertEqual(m['safe_to_spend'], m['balance'])
 
     def test_burn_rate_includes_zero_spend_days_and_has_no_food_minimum_floor(self):
         self.receipt('2026-09-25')
@@ -104,11 +104,11 @@ class BudgetCycleTests(unittest.TestCase):
         db.update_food_silo(date(2026, 10, 3))
         self.assertEqual(float(db.get_setting('food_silo_balance')), 150)
 
-    def test_allowance_excludes_laundry_reserve(self):
+    def test_allowance_uses_full_balance_without_sinking_funds(self):
         self.receipt('2026-10-02')
-        db.set_balance(3300)
+        db.set_balance(3100)
         m = db.compute_metrics('2026-10-02', date(2026, 10, 2))
-        self.assertEqual(m['reserved'], 200)
+        self.assertEqual(m['reserved'], 0)
         self.assertEqual(m['safe_to_spend'], 3100)
         self.assertEqual(m['daily_allowance'], 100)
 

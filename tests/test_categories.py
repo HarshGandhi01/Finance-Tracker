@@ -8,6 +8,8 @@ from test_expected_income import database
 
 
 def setup_laundry():
+    with db.conn() as c:
+        c.execute(text("INSERT INTO sinking_funds(name,monthly_amount) VALUES ('Laundry',200) ON CONFLICT(name) DO NOTHING"))
     db.add_transaction("2026-10-01", "Cleaners", 60, category="Laundry")
     db.set_merchant_category("Cleaners", "Laundry")
     db.set_setting("fund_prior_2026-10_Laundry", 40)

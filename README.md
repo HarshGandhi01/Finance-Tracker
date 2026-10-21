@@ -78,11 +78,10 @@ funds are not recreated on later restarts.
 
 ## Budget behavior
 
-- Daily allowance is `(balance − reserved funds) / days to cover`.
+- Daily allowance is `balance / days to cover`.
 - Food left today is today's ₹350 budget minus today's personal food spending,
   floored at zero. The silo is shown separately and is already part of cash.
 - Comfortable means at least ₹437.50/day; Tight means ₹350–437.49; Cooked means below ₹350.
 - Food, Pocket Money, and Other are locked categories. Deleting another category
-  moves its transactions and vendor rules to a chosen replacement. You can either
-  move its sinking fund (combining reservations) or delete that fund too.
+  moves its transactions and vendor rules to a chosen replacement.
 - Identical SMS text is deduplicated for ten minutes; UPI references remain unique.

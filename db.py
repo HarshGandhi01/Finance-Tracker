@@ -15,9 +15,7 @@ from sqlalchemy.exc import IntegrityError
 
 DEFAULT_CATEGORIES = ["Food", "Protein", "Laundry", "Sports", "Pocket Money", "Outing", "Other"]
 
-DEFAULT_FUNDS = {
-    "Laundry": 200,
-}
+DEFAULT_FUNDS = {}
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -876,10 +874,9 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
                                      and (not t["is_peer"] or t['personal_amount'] != t['amount']))
         for name in funds
     }
-    reserved = sum(max(funds[n] - fund_spent[n], 0) for n in funds)
-
+    reserved = 0.0
     rollover = float(settings.get("rollover_balance", 0.0))
-    safe_to_spend = balance - reserved
+    safe_to_spend = balance
 
     days_remaining = days_in_cycle - elapsed_days
     if days_remaining <= 0:
@@ -888,7 +885,7 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     meals_remaining = days_remaining * 2
 
     # The current cash balance already includes money carried over from earlier cycles.
-    daily_allowance = safe_to_spend / days_remaining
+    daily_allowance = balance / days_remaining
     fun_money = daily_allowance - target_daily
 
     today_str = str(today)

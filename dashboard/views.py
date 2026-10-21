@@ -60,7 +60,7 @@ def render_overview(db):
     outstanding = sum(max(s["cents"] / 100 - s["repaid"], 0)
                       for s in snapshot["shares"] if s["date"] <= str(today))
     figures = [
-        ("Balance", inr(m["balance"]) if m["has_balance"] else "Not set", "Before reserved funds"),
+        ("Balance", inr(m["balance"]) if m["has_balance"] else "Not set", "Available right now"),
         ("Food left today", inr(m["food_remaining_today"]), food_caption(m)),
         ("Food silo", inr(m["food_rollover"]), f"Projected after today: {inr(m['food_silo_after_today'])}"),
         ("Owed to you", inr(outstanding), "Across all cycles"),
@@ -76,7 +76,7 @@ def render_overview(db):
         st.caption("Dotted line projects your current pace.")
         if txs:
             fig = burn_rate_line(pd.DataFrame(txs), TARGET_DAILY, m["cycle_start"], plan_end, today,
-                                 balance=m["safe_to_spend"])
+                                 balance=m["balance"])
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
         else:
             st.caption("Your spending trend will appear after your first transaction.")
@@ -102,8 +102,7 @@ def render_overview(db):
     transaction_list(db, txs, shares_by_tx, month, snapshot["merchant_categories"])
     repayment_editor(db, snapshot["shares"], snapshot["credits"], today)
     with st.expander("Budget details"):
-        st.write(f"Daily allowance: {inr(m['safe_to_spend'], 2)} safe to spend ÷ {days} days = {inr(allowance, 2)}.")
-        st.write(f"Safe to spend: {inr(m['balance'])} balance − {inr(m['reserved'])} reserved funds.")
+        st.write(f"Daily allowance: {inr(m['balance'], 2)} balance ÷ {days} days = {inr(allowance, 2)}.")
         st.write(f"Comfortable: at least {inr(TARGET_DAILY * 1.25, 2)} a day (125% of the food target). "
                  f"Tight: {inr(TARGET_DAILY)} to below {inr(TARGET_DAILY * 1.25, 2)}. "
                  f"Cooked: below {inr(TARGET_DAILY)}.")
