@@ -6,9 +6,23 @@ import plotly.graph_objects as go
 import streamlit as st
 
 
+PALETTE = {
+    # ink/muted follow the Streamlit theme text; heat runs cool green -> turmeric -> chilli.
+    "light": dict(ink="#1b1d20", muted="#62676e", line="rgba(27,29,32,.12)",
+                  fine="#2f7d5b", tight="#a8680a", cooked="#c43a2f"),
+    "dark": dict(ink="#e9e8e4", muted="#9a9ea5", line="rgba(233,232,228,.12)",
+                 fine="#5cb88c", tight="#e3a63a", cooked="#f0705f"),
+}
+
+
+def palette():
+    return PALETTE["light" if st.context.theme.type == "light" else "dark"]
+
+
 def apply_theme():
-    css = Path(__file__).parent / "assets/styles.css"
-    st.markdown(f"<style>{css.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+    css = (Path(__file__).parent / "assets/styles.css").read_text(encoding="utf-8")
+    tokens = "".join(f"--{k}:{v};" for k, v in palette().items())
+    st.markdown(f"<style>:root{{{tokens}}}{css}</style>", unsafe_allow_html=True)
 
 
 def inr(x: float, decimals: int = 0) -> str:
@@ -61,8 +75,8 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today, balance=Non
 
     fig = go.Figure()
     dark = st.context.theme.type != "light"
-    muted = "#a0a6b0" if dark else "#626974"
-    accent = "#7da5de" if dark else "#3568a8"
+    colors = palette()
+    muted, accent = colors["muted"], colors["ink"]
 
     # Add actual spend line
     fig.add_trace(go.Scatter(
@@ -70,7 +84,7 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today, balance=Non
         y=daily_spend['cumulative'],
         mode='lines',
         name='Net Spend',
-        line=dict(color=accent, width=2.5),
+        line=dict(color=accent, width=2.25, shape='hv'),
         hovertemplate="Net spend: ₹%{y:,.0f}<extra></extra>"
     ))
 
@@ -95,7 +109,7 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today, balance=Non
                            showarrow=False, font=dict(size=11, color=muted), yshift=12)
     fig.update_layout(
         template="plotly_dark" if dark else "plotly_white",
-        font=dict(family="Arial, sans-serif", color=muted, size=12),
+        font=dict(family="'Schibsted Grotesk', sans-serif", color=muted, size=12),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         height=260, margin=dict(l=0, r=8, t=30, b=0), showlegend=False,
         xaxis=dict(showgrid=False, showline=False, zeroline=False, tickformat="%d %b", nticks=5),

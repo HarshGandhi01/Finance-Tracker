@@ -32,12 +32,16 @@ def health():
 @app.post("/{path:path}")
 async def log_transaction(request: Request, path: str = ""):
     supplied = request.headers.get("x-token") or request.query_params.get("token") or ""
-    if not hmac.compare_digest(supplied, TOKEN):
+    # Compare bytes: str compare_digest raises (500) on non-ASCII input.
+    if not hmac.compare_digest(supplied.encode(), TOKEN.encode()):
         raise HTTPException(status_code=401, detail="bad token")
 
     text = await _sms_text(request)
     today = db.today_ist()
     parsed = parse_sms(text, today)
+    if parsed is not None:
+        # A misread date must not hide the payment in the future, where no total counts it.
+        parsed["date"] = min(parsed["date"], today)
 
     if parsed is None:
         if AMT.search(text) and not re.search(r"otp", text, re.I):

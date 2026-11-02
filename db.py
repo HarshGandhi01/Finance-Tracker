@@ -170,9 +170,7 @@ def get_setting(key, default=None):
 
 def set_setting(key, value):
     with conn() as c:
-        c.execute(text("INSERT INTO settings(key, value) VALUES (:k, :v) "
-                       "ON CONFLICT (key) DO UPDATE SET value=excluded.value"),
-                  {"k": key, "v": str(value)})
+        _put_setting(c, key, value)
 
 
 def opening_key(month: str) -> str:
@@ -271,6 +269,9 @@ def add_transaction(date_, merchant, amount, direction="debit", category="Food",
                  "cat": category, "peer": int(is_peer), "pn": peer_name, "st": status,
                  "ref": upi_ref, "ts": _now_utc(), "hash": sms_hash})
             tx_id = result.scalar_one()
+            # Backdated food (late SMS, manual entry, statement import) must reach the silo.
+            _correct_silo(c, date_, _food_spend(c, {'category': category, 'direction': direction,
+                          'amount': amount, 'is_peer': is_peer}, 0))
             if splits:
                 _save_splits(c, tx_id, splits)
 
@@ -317,15 +318,8 @@ def _save_splits(c, tx_id, splits):
     if _rows(c, "SELECT 1 FROM split_repayments r JOIN expense_shares s ON s.id=r.share_id "
                 "WHERE s.transaction_id=:i", i=tx_id):
         raise ValueError("Remove linked repayments before changing this split.")
-    old = _rows(c, "SELECT COALESCE(SUM(cents),0) AS n FROM expense_shares WHERE transaction_id=:i", i=tx_id)[0]['n']
     # Backdated edits must correct food savings already rolled into the silo.
-    settings = {r['key']: r['value'] for r in _rows(c, "SELECT key,value FROM settings")}
-    if tx['category'] == 'Food' and tx['direction'] == 'debit' and tx['date'] < settings.get('food_silo_last_update', ''):
-        old_spend = tx['amount'] - old / 100 if old or not tx['is_peer'] else 0
-        new_spend = tx['amount'] - total / 100 if total or not tx['is_peer'] else 0
-        value = float(settings.get('food_silo_balance', 0)) + old_spend - new_spend
-        c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
-                       "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {'v': str(value)})
+    _correct_silo(c, tx['date'], _food_spend(c, tx, total) - _food_spend(c, tx))
     c.execute(text("DELETE FROM expense_shares WHERE transaction_id=:i"), {'i': tx_id})
     for person, cents in cleaned:
         c.execute(text("INSERT INTO expense_shares(transaction_id,person,cents) VALUES (:i,:p,:a)"),
@@ -403,15 +397,7 @@ def delete_transaction(tx_id: int):
         if _rows(c, "SELECT 1 FROM split_repayments r JOIN expense_shares s ON s.id=r.share_id "
                     "WHERE s.transaction_id=:i", i=tx_id):
             raise ValueError("Remove linked repayments before deleting this expense.")
-            
-        settings = {r['key']: r['value'] for r in _rows(c, 'SELECT key,value FROM settings')}
-        if tx['category'] == 'Food' and tx['direction'] == 'debit' and tx['date'] < settings.get('food_silo_last_update', ''):
-            old_splits = _rows(c, "SELECT COALESCE(SUM(cents),0) AS n FROM expense_shares WHERE transaction_id=:i", i=tx_id)[0]['n']
-            old_spend = tx['amount'] - old_splits / 100 if old_splits or not tx['is_peer'] else 0
-            if old_spend:
-                value = float(settings.get('food_silo_balance', 0)) + old_spend
-                c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
-                               "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {'v': str(value)})
+        _correct_silo(c, tx['date'], -_food_spend(c, tx))
 
         c.execute(text("DELETE FROM expense_shares WHERE transaction_id=:i"), {"i": tx_id})
         c.execute(text("DELETE FROM split_repayments WHERE credit_id=:i"), {"i": tx_id})
@@ -423,17 +409,7 @@ def set_peer(tx_id: int, is_peer: bool):
         tx = _lock_transaction(c, tx_id)
         if bool(tx['is_peer']) == bool(is_peer):
             return
-            
-        settings = {r['key']: r['value'] for r in _rows(c, "SELECT key,value FROM settings")}
-        if tx['category'] == 'Food' and tx['direction'] == 'debit' and tx['date'] < settings.get('food_silo_last_update', ''):
-            splits = _rows(c, "SELECT COALESCE(SUM(cents),0) AS n FROM expense_shares WHERE transaction_id=:i", i=tx_id)[0]['n']
-            old_spend = tx['amount'] - splits / 100 if splits or not tx['is_peer'] else 0
-            new_spend = tx['amount'] - splits / 100 if splits or not is_peer else 0
-            correction = old_spend - new_spend
-            if correction:
-                value = float(settings.get('food_silo_balance', 0)) + correction
-                c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
-                               "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {'v': str(value)})
+        _correct_silo(c, tx['date'], _food_spend(c, {**tx, 'is_peer': is_peer}) - _food_spend(c, tx))
 
         c.execute(text("UPDATE transactions SET is_peer=:p WHERE id=:i"),
                   {"p": int(is_peer), "i": tx_id})
@@ -447,17 +423,7 @@ def update_category(tx_id: int, new_cat: str):
         tx = _lock_transaction(c, tx_id)
         if new_cat == 'Pocket Money' and _rows(c, "SELECT 1 FROM split_repayments WHERE credit_id=:i", i=tx_id):
             raise ValueError("A repayment cannot be pocket money.")
-            
-        if tx['category'] != new_cat and tx['direction'] == 'debit':
-            settings = {r['key']: r['value'] for r in _rows(c, 'SELECT key,value FROM settings')}
-            if tx['date'] < settings.get('food_silo_last_update', ''):
-                splits = _rows(c, "SELECT COALESCE(SUM(cents),0) AS n FROM expense_shares WHERE transaction_id=:i", i=tx_id)[0]['n']
-                personal = tx['amount'] - splits / 100 if splits or not tx['is_peer'] else 0
-                correction = personal * (int(tx['category'] == 'Food') - int(new_cat == 'Food'))
-                if correction:
-                    value = float(settings.get('food_silo_balance', 0)) + correction
-                    c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
-                                   "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {'v': str(value)})
+        _correct_silo(c, tx['date'], _food_spend(c, {**tx, 'category': new_cat}) - _food_spend(c, tx))
 
         c.execute(text("UPDATE transactions SET category=:cat WHERE id=:i"),
                   {"cat": new_cat, "i": tx_id})
@@ -480,10 +446,12 @@ def get_funds() -> dict:
 
 
 def set_balance(amount: float):
+    # One transaction, so an SMS landing mid-update is neither lost nor double counted.
     with conn() as c:
+        _lock_setting(c, "anchor_balance")
         max_id = _rows(c, "SELECT COALESCE(MAX(id),0) AS m FROM transactions")[0]["m"]
-    set_setting("anchor_balance", amount)
-    set_setting("anchor_max_id", max_id)
+        _put_setting(c, "anchor_balance", amount)
+        _put_setting(c, "anchor_max_id", max_id)
 
 
 def set_food_silo_zero():
@@ -494,6 +462,8 @@ def set_food_silo_zero():
                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value"))
         c.execute(text("UPDATE settings SET value=:v WHERE key='food_silo_last_update'"),
                   {"v": str(today_ist())})
+        # Spending before the reset must never flow back into the fresh silo.
+        _put_setting(c, "food_silo_start", today_ist())
 
 def get_merchant_category(merchant: str) -> str | None:
     return get_merchant_categories().get(normalize_merchant(merchant))
@@ -558,16 +528,7 @@ def edit_transaction(tx_id, merchant, category, remember=None):
             raise ValueError('A repayment cannot be pocket money.')
         if remember is not None and tx['direction'] != 'debit':
             raise ValueError('Vendor rules apply to payments, not received credits.')
-        if tx['category'] != category and tx['direction'] == 'debit':
-            settings = {r['key']: r['value'] for r in _rows(c, 'SELECT key,value FROM settings')}
-            if tx['date'] < settings.get('food_silo_last_update', ''):
-                others = _rows(c, 'SELECT COALESCE(SUM(cents),0) AS n FROM expense_shares WHERE transaction_id=:i', i=tx_id)[0]['n']
-                personal = tx['amount'] - others / 100 if others or not tx['is_peer'] else 0
-                correction = personal * (int(tx['category'] == 'Food') - int(category == 'Food'))
-                if correction:
-                    value = float(settings.get('food_silo_balance', 0)) + correction
-                    c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
-                                   "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {'v': str(value)})
+        _correct_silo(c, tx['date'], _food_spend(c, {**tx, 'category': category}) - _food_spend(c, tx))
         c.execute(text('UPDATE transactions SET merchant=:m,category=:cat WHERE id=:i'),
                   {'i': tx_id, 'm': merchant, 'cat': category})
         if remember is not None:
@@ -637,6 +598,32 @@ def _lock_setting(c, key, default=""):
     c.execute(text("UPDATE settings SET value=value WHERE key=:k"), {"k": key})
 
 
+def _put_setting(c, key, value):
+    c.execute(text("INSERT INTO settings(key,value) VALUES (:k,:v) "
+                   "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {"k": key, "v": str(value)})
+
+
+def _food_spend(c, tx, split_cents=None):
+    """Personal Food spending of a transaction, exactly as the silo rollover counts it."""
+    if tx['category'] != 'Food' or tx['direction'] != 'debit':
+        return 0.0
+    if split_cents is None:
+        split_cents = _rows(c, "SELECT COALESCE(SUM(cents),0) AS n FROM expense_shares "
+                               "WHERE transaction_id=:i", i=tx['id'])[0]['n']
+    return float(tx['amount']) - split_cents / 100 if split_cents or not tx['is_peer'] else 0.0
+
+
+def _correct_silo(c, tx_date, extra_spend):
+    """Apply a spending change on a day the silo already rolled over (and after its last reset)."""
+    if not extra_spend:
+        return
+    _lock_setting(c, "food_silo_last_update")
+    s = {r['key']: r['value'] for r in _rows(c, "SELECT key,value FROM settings WHERE key IN "
+         "('food_silo_start','food_silo_last_update','food_silo_balance')")}
+    if s.get('food_silo_start', '') <= str(tx_date) < s['food_silo_last_update']:
+        _put_setting(c, 'food_silo_balance', float(s.get('food_silo_balance', 0)) - extra_spend)
+
+
 def _category_names(c):
     return [r["name"] for r in _rows(c, "SELECT name FROM categories ORDER BY sort_order,name")]
 
@@ -688,9 +675,10 @@ def _move_category_data(c, old, new, delete_fund=False):
             correction += _rows(c, "SELECT COALESCE(SUM(amount - COALESCE((SELECT SUM(cents)/100.0 "
                                 "FROM expense_shares WHERE transaction_id=t.id),0)),0) AS n "
                                 "FROM transactions t WHERE category=:n AND direction='debit' "
-                                "AND date<:d AND (is_peer=0 OR EXISTS "
+                                "AND date>=:st AND date<:d AND (is_peer=0 OR EXISTS "
                                 "(SELECT 1 FROM expense_shares WHERE transaction_id=t.id))",
-                                n=alias, d=settings["food_silo_last_update"])[0]["n"]
+                                n=alias, st=settings.get("food_silo_start", ""),
+                                d=settings["food_silo_last_update"])[0]["n"]
         c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value"),
                   {"v": str(float(settings.get("food_silo_balance", 0)) - correction)})
@@ -824,6 +812,8 @@ def update_food_silo(today: date, target_daily: float = 350.0):
                              "AND (is_peer=0 OR EXISTS (SELECT 1 FROM expense_shares WHERE transaction_id=t.id))",
                              s=str(last_date), e=today_str)[0]['s'] or 0
             current_silo += target_daily * (today - last_date).days - float(spending)
+        else:
+            _put_setting(c, 'food_silo_start', today_str)
         c.execute(text("INSERT INTO settings(key,value) VALUES ('food_silo_balance',:v) "
                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value"), {'v': str(current_silo)})
         c.execute(text("UPDATE settings SET value=:v WHERE key='food_silo_last_update'"), {'v': today_str})

@@ -1,35 +1,63 @@
-/* Streamlit owns widget styling and both themes. Only our text layouts live here. */
-.stApp { font-variant-numeric: tabular-nums; }
-.block-container { max-width: 1120px; padding-top: 5rem; padding-bottom: 3rem; }
-.brand { font-size: 1.05rem; font-weight: 650; margin-bottom: 1.3rem; }
-.budget-status { font-size: 1rem; margin-bottom: .4rem; }
-.comfortable, .credit { color: #61aa85; }
-.cooked, .debit { color: #da8585; }
-.tight { color: inherit; }
-h1.allowance { font-size: clamp(2rem, 4vw, 3rem); font-weight: 650; line-height: 1.2; margin: 0; padding: 0 0 .6rem; }
-.allowance .plan-until { white-space: nowrap; }
-.summary-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1.5rem; margin: 1rem 0 1.5rem; }
-.summary-item strong { display: block; font-size: 1.45rem; font-weight: 600; }
-.summary-item div { font-size: .9rem; margin: .2rem 0; }
-.summary-item small, .row-vendor small { display: block; opacity: .65; font-size: .78rem; line-height: 1.5; }
-.category-line { display: flex; align-items: baseline; gap: .8rem; margin-top: 1rem; font-size: .9rem; }
+/* Streamlit owns widgets and theme colours; this file only lays out our own text.
+   Heat colours (--fine/--tight/--cooked) are set per theme in theme.apply_theme. */
+/* No tabular-nums: in this face it widens "." and ",", which reads as "₹6 ,020". */
+.block-container { max-width: 720px; padding-top: 4.5rem; padding-bottom: 4rem; }
+h2, h3 { letter-spacing: -0.01em; }
+
+/* Hero: the app's name is the question, the page answers it. */
+.question { font-size: 1rem; color: var(--muted); margin: 0 0 .1rem; }
+.answer { font-size: clamp(3.4rem, 13vw, 5.6rem); font-weight: 850; line-height: .95;
+          letter-spacing: -0.045em; margin: 0 0 1rem; color: var(--heat); }
+.allowance { font-size: clamp(1.35rem, 4.5vw, 1.75rem); font-weight: 600; line-height: 1.25;
+             letter-spacing: -0.015em; margin: 0; }
+.allowance-note { color: var(--muted); margin: .35rem 0 0; font-size: .95rem; }
+
+/* Heat scale: three bands at the real thresholds, marker at today's allowance. */
+.heat { position: relative; margin: 1.6rem 0 2.6rem; }
+.heat-bands { display: flex; height: 8px; gap: 2px; }
+.heat-bands span { opacity: .28; }
+.heat-bands span.on { opacity: 1; }
+.heat-bands span:nth-child(1) { background: var(--cooked); border-radius: 4px 0 0 4px; }
+.heat-bands span:nth-child(2) { background: var(--tight); }
+.heat-bands span:nth-child(3) { background: var(--fine); border-radius: 0 4px 4px 0; }
+.heat-marker { position: absolute; top: -5px; width: 4px; height: 18px; margin-left: -2px;
+               border-radius: 2px; background: var(--ink); }
+.heat-tick { position: absolute; top: 14px; font-size: .75rem; color: var(--muted);
+             transform: translateX(-50%); white-space: nowrap; }
+
+/* Figures: a plain row, not cards. Value first, what it means underneath. */
+.figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem;
+           padding: 1.1rem 0; margin-bottom: 1.25rem;
+           border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.figure strong { display: block; font-size: 1.3rem; font-weight: 650; letter-spacing: -0.01em; }
+.figure span { display: block; font-size: .88rem; margin-top: .1rem; }
+.figure small { display: block; color: var(--muted); font-size: .78rem; line-height: 1.45; margin-top: .2rem; }
+
+.past-cycle { font-size: clamp(1.6rem, 5vw, 2.2rem); font-weight: 700; letter-spacing: -0.02em;
+              line-height: 1.2; margin: .2rem 0 1.4rem; }
+
+/* Category breakdown */
+.category-line { display: flex; align-items: baseline; gap: .8rem; margin-top: .9rem; font-size: .92rem; }
 .category-line span { flex: 1; }
-.category-line b { font-weight: 500; }
-.category-line small { opacity: .6; }
-.category-track { height: 3px; background: rgba(128,128,128,.12); margin: .6rem 0; }
-.category-track span { display: block; height: 100%; background: #7da5de; }
-.ledger-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .75rem; align-items: center; min-height: 52px; }
+.category-line b { font-weight: 600; }
+.category-line small { color: var(--muted); min-width: 2.6em; text-align: right; }
+.category-track { height: 4px; background: var(--line); border-radius: 2px; margin: .45rem 0 0; }
+.category-track span { display: block; height: 100%; border-radius: 2px; background: var(--ink); opacity: .7; }
+
+/* Ledger */
+.day-label { color: var(--muted); font-size: .82rem; margin: 1.1rem 0 .1rem; }
+.ledger-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; align-items: center; min-height: 48px; }
 .row-vendor { min-width: 0; font-size: .95rem; }
 .row-vendor > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-amount { text-align: right; white-space: nowrap; font-size: .95rem; }
-/* Keep the native icon action beside its ledger row even on a narrow phone. */
+.row-vendor small { display: block; color: var(--muted); font-size: .78rem; line-height: 1.45; }
+.row-amount { text-align: right; white-space: nowrap; font-size: .95rem; font-weight: 550; }
+.row-amount.credit { color: var(--fine); }
 [class*="st-key-ledger_row_"] > div { min-width: 0; }
 [class*="st-key-ledger_row_"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap; }
+
 @media (max-width: 600px) {
-  .block-container { padding-left: 1rem; padding-right: 1rem; }
-  h1.allowance { font-size: 2.2rem; }
-  .allowance .plan-until { display: block; font-size: 1.15rem; margin-top: .4rem; font-weight: 400; }
-  .summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.3rem 1rem; }
-  .summary-item strong { font-size: 1.3rem; }
-  .row-vendor, .row-amount { font-size: .88rem; }
+  .block-container { padding-left: 1rem; padding-right: 1rem; padding-top: 3.8rem; }
+  .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem 1rem; }
+  .figure strong { font-size: 1.2rem; }
+  .row-vendor, .row-amount { font-size: .9rem; }
 }

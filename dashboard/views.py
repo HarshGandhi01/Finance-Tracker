@@ -18,9 +18,36 @@ def budget_status(allowance, target=TARGET_DAILY):
 
 def food_caption(metrics):
     if metrics["today_food_spend"] > TARGET_DAILY:
-        coverage = "silo is negative" if metrics["food_silo_after_today"] < 0 else "covered by silo"
+        coverage = "savings go negative" if metrics["food_silo_after_today"] < 0 else "covered by savings"
         return f"{inr(metrics['today_food_spend'] - TARGET_DAILY)} over today · {coverage}"
     return f"{inr(metrics['today_food_spend'])} spent of {inr(TARGET_DAILY)}"
+
+
+VERDICT = {"Comfortable": "Not yet.", "Tight": "Almost.", "Cooked": "Yes."}
+HEAT = {"Comfortable": "fine", "Tight": "tight", "Cooked": "cooked"}
+
+
+def heat_scale(allowance, status, target=TARGET_DAILY):
+    """Three bands at the real thresholds (0, target, 125% of target) with today's marker."""
+    top = target * 2
+    pos = min(max(allowance, 0) / top, 1) * 100
+    bands = [("cooked", target), ("tight", target * 0.25), ("fine", target * 0.75)]
+    spans = "".join(f'<span class="{"on" if HEAT[status] == name else ""}" style="flex:{w}"></span>'
+                    for name, w in bands)
+    ticks = "".join(f'<span class="heat-tick" style="left:{v / top * 100:.1f}%">{inr(v)}</span>'
+                    for v in (target, target * 1.25))
+    return (f'<div class="heat" role="img" aria-label="{inr(allowance)} a day: {status.lower()}">'
+            f'<div class="heat-bands">{spans}</div>'
+            f'<span class="heat-marker" style="left:{pos:.1f}%"></span>{ticks}</div>')
+
+
+def allowance_note(balance, allowance, target=TARGET_DAILY):
+    if balance < 0:
+        return f"You're {inr(-balance)} overdrawn."
+    gap = allowance - target
+    if gap >= 0:
+        return f"{inr(gap)} a day more than your {inr(target)} food budget."
+    return f"{inr(-gap)} a day short of your {inr(target)} food budget."
 
 
 def render_overview(db):
@@ -29,95 +56,98 @@ def render_overview(db):
     m = snapshot["metrics"]
     if st.session_state.get("budget_cycle") not in snapshot["month_options"]:
         st.session_state["budget_cycle"] = snapshot["month"]
-    st.markdown('<div class="brand">Am I cooked?</div>', unsafe_allow_html=True)
+    current = snapshot["month"] == snapshot["month_now"]
     if "notice" in st.session_state:
         st.toast(st.session_state.pop("notice"))
     hero = st.empty()
-    summary = st.empty()
-    default_date = next_25th(today)
-    if st.session_state.get("money_date", default_date) <= today:
-        st.session_state["money_date"] = default_date
-    with st.expander("Plan dates"):
+    # Seed the widget through session state only, so Streamlit never sees two defaults.
+    if st.session_state.get("money_date", today) <= today:
+        st.session_state["money_date"] = next_25th(today)
+    with st.expander("Change dates"):
         cycle_col, scope_col, date_col = st.columns(3)
         with cycle_col:
             month = st.selectbox("Budget cycle", snapshot["month_options"], key="budget_cycle",
-                                format_func=lambda key: f"From {key}" if len(key) == 10 else key)
+                                 format_func=lambda key: f"From {date.fromisoformat(key):%d %b %Y}"
+                                 if len(key) == 10 else key)
         with scope_col:
-            scope = st.selectbox("Budget horizon", ["Until money date", "Full cycle"], key="plan_through")
+            scope = st.selectbox("Plan until", ["Until money date", "Full cycle"], key="plan_through")
         with date_col:
-            money_date = st.date_input("Ask for money on", value=default_date,
-                                      min_value=today + timedelta(days=1), key="money_date")
+            money_date = st.date_input("Ask for money on", min_value=today + timedelta(days=1),
+                                       key="money_date")
     plan_end = money_date - timedelta(days=1) if scope == "Until money date" else m["cycle_end"]
     days = max((plan_end - today).days + 1, 1)
     allowance = m["safe_to_spend"] / days
     status = budget_status(allowance)
-    if m["has_balance"]:
-        hero.html(f'<div class="budget-status {status.lower()}">{status}</div>'
-                  f'<h1 class="allowance">{inr(allowance)} a day <span class="plan-until">until {plan_end:%d %b}</span></h1>')
+    if not current:
+        # Today's allowance means nothing for a closed cycle; summarise it instead.
+        hero.html(f'<p class="question">Cycle {m["cycle_start"]:%d %b} to {m["cycle_end"]:%d %b %Y}</p>'
+                  f'<p class="past-cycle">You spent {inr(m["burn"])} in this cycle.</p>')
+    elif m["has_balance"]:
+        hero.html(f'<p class="question">Am I cooked?</p>'
+                  f'<h1 class="answer" style="--heat:var(--{HEAT[status]})">{VERDICT[status]}</h1>'
+                  f'<p class="allowance">{inr(max(allowance, 0))} a day until {plan_end:%d %b}</p>'
+                  f'<p class="allowance-note">{allowance_note(m["balance"], allowance)}</p>'
+                  + heat_scale(allowance, status))
     else:
-        hero.html('<h1 class="allowance">Set your balance</h1>'
-                  '<p>Open Settings to calculate your daily allowance.</p>')
+        with hero.container():
+            st.html('<p class="question">Am I cooked?</p>'
+                    '<p class="past-cycle">Enter your bank balance to find out.</p>')
+            st.page_link("settings.py", label="Set balance", icon=":material/account_balance:")
     outstanding = sum(max(s["cents"] / 100 - s["repaid"], 0)
                       for s in snapshot["shares"] if s["date"] <= str(today))
     figures = [
-        ("Balance", inr(m["balance"]) if m["has_balance"] else "Not set", "Available right now"),
+        ("Balance", inr(m["balance"]) if m["has_balance"] else "Not set", "In your account now"),
         ("Food left today", inr(m["food_remaining_today"]), food_caption(m)),
-        ("Food silo", inr(m["food_rollover"]), f"Projected after today: {inr(m['food_silo_after_today'])}"),
-        ("Owed to you", inr(outstanding), "Across all cycles"),
+        ("Food savings", inr(m["food_rollover"]), f"{inr(m['food_silo_after_today'])} after today"),
+        ("Owed to you", inr(outstanding), "From split bills"),
     ]
-    summary.markdown('<div class="summary-grid">' + "".join(
-        f'<div class="summary-item"><strong>{escape(value)}</strong><div>{label}</div>'
-        f'<small>{escape(caption)}</small></div>' for label, value, caption in figures) + "</div>",
-        unsafe_allow_html=True)
-    txs = m["txs"]
-    chart, breakdown = st.columns([2, 1], gap="large")
-    with chart:
-        st.subheader("Net spending")
-        st.caption("Dotted line projects your current pace.")
-        if txs:
-            fig = burn_rate_line(pd.DataFrame(txs), TARGET_DAILY, m["cycle_start"], plan_end, today,
-                                 balance=m["balance"])
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-        else:
-            st.caption("Your spending trend will appear after your first transaction.")
-    with breakdown:
-        st.subheader("By category")
-        st.caption("Personal spending this cycle")
-        totals = {}
-        for tx in txs:
-            if tx["direction"] == "debit" and tx["personal_amount"] > 0:
-                totals[tx["category"]] = totals.get(tx["category"], 0) + tx["personal_amount"]
-        total = sum(totals.values())
-        for label, amount in sorted(totals.items(), key=lambda item: item[1], reverse=True):
-            pct = amount / total * 100
-            st.markdown(f'<div class="category-line"><span>{escape(label)}</span><b>{inr(amount)}</b>'
-                        f'<small>{pct:.0f}%</small></div><div class="category-track">'
-                        f'<span style="width:{pct:.1f}%"></span></div>', unsafe_allow_html=True)
-        if not totals:
-            st.caption("No personal expenses this cycle.")
+    st.html('<div class="figures">' + "".join(
+        f'<div class="figure"><strong>{escape(value)}</strong><span>{label}</span>'
+        f'<small>{escape(caption)}</small></div>' for label, value, caption in figures) + "</div>")
     manual_transaction_editor(db, today)
+    txs = m["txs"]
+    st.subheader("Spending this cycle")
+    if txs:
+        st.caption("Money back and refunds are subtracted. The dotted line continues your current pace.")
+        fig = burn_rate_line(pd.DataFrame(txs), TARGET_DAILY, m["cycle_start"],
+                             plan_end if current else m["cycle_end"], today, balance=m["balance"])
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+    else:
+        st.caption("Your spending line appears after your first payment.")
+    totals = {}
+    for tx in txs:
+        if tx["direction"] == "debit" and tx["personal_amount"] > 0:
+            totals[tx["category"]] = totals.get(tx["category"], 0) + tx["personal_amount"]
+    if totals:
+        st.subheader("Where it went")
+        total = sum(totals.values())
+        st.html("".join(
+            f'<div class="category-line"><span>{escape(label)}</span><b>{inr(amount)}</b>'
+            f'<small>{amount / total * 100:.0f}%</small></div><div class="category-track">'
+            f'<span style="width:{amount / total * 100:.1f}%"></span></div>'
+            for label, amount in sorted(totals.items(), key=lambda item: item[1], reverse=True)))
     shares_by_tx = {}
     for share in snapshot["shares"]:
         shares_by_tx.setdefault(share["transaction_id"], []).append(share)
     transaction_list(db, txs, shares_by_tx, month, snapshot["merchant_categories"])
     repayment_editor(db, snapshot["shares"], snapshot["credits"], today)
-    with st.expander("Budget details"):
-        st.write(f"Daily allowance: {inr(m['balance'], 2)} balance ÷ {days} days = {inr(allowance, 2)}.")
-        st.write(f"Comfortable: at least {inr(TARGET_DAILY * 1.25, 2)} a day (125% of the food target). "
-                 f"Tight: {inr(TARGET_DAILY)} to below {inr(TARGET_DAILY * 1.25, 2)}. "
-                 f"Cooked: below {inr(TARGET_DAILY)}.")
-        st.caption(f"Cycle: {m['cycle_start']:%d %b} – {m['cycle_end']:%d %b %Y}. "
-                   "The silo is part of your balance, not extra cash. "
-                   "Money owed becomes available only when repaid. "
-                   "Pocket money and split repayments are excluded from the spending chart.")
+    with st.expander("How this is worked out"):
+        st.write(f"Daily amount: {inr(m['balance'], 2)} balance ÷ {days} days = {inr(allowance, 2)}.")
+        st.write(f"Not yet: at least {inr(TARGET_DAILY * 1.25, 2)} a day. "
+                 f"Almost: {inr(TARGET_DAILY)} to {inr(TARGET_DAILY * 1.25, 2)}. "
+                 f"Yes: under {inr(TARGET_DAILY)}, your daily food budget.")
+        st.caption(f"This cycle runs {m['cycle_start']:%d %b} to {m['cycle_end']:%d %b %Y}. "
+                   "Food savings are part of your balance, not extra cash. "
+                   "Money you're owed counts only once it's paid back. "
+                   "Pocket money and split repayments are left out of the spending line.")
 
 
 def render_settings(db):
     today = db.today_ist()
     snapshot = db.load_dashboard(today, target_daily=TARGET_DAILY)
-    st.markdown('<div class="brand">Am I cooked?</div>', unsafe_allow_html=True)
     st.title("Settings")
-    st.subheader("Balance adjustment")
+    st.subheader("Balance")
+    st.caption("Enter what your bank app shows. New payments are added on top of it.")
     with st.form("balance_adjustment", border=False):
         balance = st.number_input("Current balance (₹)", value=float(snapshot["metrics"]["balance"]),
                                   step=100.0, format="%.2f")
@@ -130,24 +160,32 @@ def render_settings(db):
     category_manager(db)
     with st.expander("Pocket-money cycle", expanded=not snapshot["receipt_dates"]):
         st.caption("Your cycle starts on the date of a received credit marked Pocket Money.")
-        credits = {t["id"]: t for t in snapshot["credits"] if not t["is_repayment"]}
+        credits = {t["id"]: t for t in snapshot["credits"]
+                   if not t["is_repayment"] and t["category"] != "Pocket Money"}
         if credits:
             credit_id = st.selectbox("Received payment", list(credits),
                                     format_func=lambda i: f"{credits[i]['date']} · {credits[i]['merchant']} · {inr(credits[i]['amount'])}")
             if st.button("Mark as pocket money"):
-                db.update_category(credit_id, "Pocket Money")
-                st.rerun()
+                try:
+                    db.update_category(credit_id, "Pocket Money")
+                    st.session_state["notice"] = "Marked as pocket money. A new cycle starts on that date."
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
         else:
             st.caption("Add the received payment on Overview as a credit with category Pocket Money.")
-    with st.expander("Food silo"):
-        st.caption("Reset accumulated food savings to zero from today.")
-        if st.button("Reset food silo"):
+    with st.expander("Food savings"):
+        st.caption("Every day you spend under your food budget, the difference is saved here. "
+                   "Resetting sets it to zero from today.")
+        if st.button("Reset food savings"):
             db.set_food_silo_zero()
-            st.session_state["notice"] = "Food silo reset."
+            st.session_state["notice"] = "Food savings reset."
             st.rerun()
-    with st.expander("Unread bank texts"):
+    with st.expander(f"Bank texts I couldn't read ({len(snapshot['unparsed'])})"):
         if not snapshot["unparsed"]:
-            st.caption("No unread bank texts.")
+            st.caption("Every bank text so far was understood.")
+        else:
+            st.caption("Add these on Overview yourself, then clear them.")
         for sms in snapshot["unparsed"]:
             st.code(sms["raw"], language=None)
             if st.button("Clear", key=f"u_admin_{sms['id']}"):
@@ -289,9 +327,9 @@ def transaction_editor(db, t, cat_options, existing_splits, rules):
 
 @st.fragment
 def manual_transaction_editor(db, today):
-    with st.popover("Add transaction", width="stretch"):
+    with st.popover("Add transaction", icon=":material/add:", width="stretch"):
         m_date = st.date_input("Transaction date", value=today, max_value=today)
-        m_merchant = st.text_input("Merchant", placeholder="e.g. Hungry")
+        m_merchant = st.text_input("Merchant", placeholder="Who you paid, or who paid you")
 
         # Auto-tagging logic
         default_cat = db.get_categories()[0]
@@ -301,10 +339,11 @@ def manual_transaction_editor(db, today):
                 default_cat = mapped_cat
 
         m_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
+        m_dir = st.radio("Type", ["debit", "credit"], horizontal=True,
+                         format_func={"debit": "I paid", "credit": "I received"}.get)
         m_cat = st.selectbox("Category", options=db.get_categories(), index=db.get_categories().index(default_cat))
-        m_dir = st.selectbox("Direction", options=["debit", "credit"])
-
-        auto_tag = st.checkbox("Save as default category for this merchant", value=False)
+        # Vendor rules only ever apply to payments, so don't offer one for received money.
+        auto_tag = m_dir == "debit" and st.checkbox("Use this category for future payments here")
 
         manual_splits = split_fields(db, m_amount, 'manual') if m_dir == 'debit' else []
         if st.button("Log transaction", width="stretch", disabled=manual_splits is None):
@@ -313,6 +352,7 @@ def manual_transaction_editor(db, today):
                     if db.add_transaction(m_date, m_merchant, m_amount, direction=m_dir, category=m_cat, splits=manual_splits, apply_merchant_rule=False):
                         if auto_tag:
                             db.set_merchant_category(m_merchant, m_cat)
+                        st.session_state["notice"] = "Transaction added."
                         st.rerun()
                     else:
                         st.error("Could not save this transaction.")
@@ -324,12 +364,12 @@ def manual_transaction_editor(db, today):
 
 @st.fragment
 def repayment_editor(db, shares, received_credits, today):
-    with st.expander("Owed to me", expanded=False):
+    with st.expander("Money owed to me", expanded=False):
         outstanding = [s for s in shares if s['date'] <= str(today) and s['cents'] - round(s['repaid'] * 100) > 0]
         st.metric("Outstanding across all cycles", inr(sum(s['cents'] / 100 - s['repaid'] for s in outstanding), 2))
         st.caption("Link repayments already in your records to avoid adding the money twice.")
         if not outstanding:
-            st.info("All settled. Split a transaction to track money owed to you.")
+            st.caption("Nobody owes you anything. Split a payment from its edit menu to track it here.")
         for s in outstanding:
             remaining = (s['cents'] - round(s['repaid'] * 100)) / 100
             with st.expander(f"{s['person']} · {inr(remaining, 2)} owed · {s['merchant']} · {s['date']}"):
@@ -369,7 +409,7 @@ def transaction_list(db, txs, shares_by_tx, month, rules):
         with title:
             st.subheader('Transactions')
         with search:
-            query = st.text_input('Search vendor or person', placeholder='Search vendor or person…', label_visibility='collapsed', key='ledger_search')
+            query = st.text_input('Search vendor or person', placeholder='Search', label_visibility='collapsed', key='ledger_search')
         cat_options = list(db.get_categories()) + sorted({t['category'] for t in txs if t['category'] not in db.get_categories()})
         with category:
             selected = st.selectbox('Filter by category', ['All categories'] + cat_options, label_visibility='collapsed', key='ledger_category')
@@ -377,7 +417,8 @@ def transaction_list(db, txs, shares_by_tx, month, rules):
                    and (selected == 'All categories' or t['category'] == selected)]
         sorted_txs = sorted(matches, key=lambda t: (t['date'], t['id']), reverse=True)
         if not sorted_txs:
-            st.info('No transactions match your filters.' if txs else 'No transactions yet. Add your first payment to get started.')
+            st.caption('Nothing matches. Clear the search or pick another category.' if txs
+                       else 'No transactions yet. Payments from bank texts show up here, or add one above.')
             return
         page_size = 25
         page_count = (len(sorted_txs) + page_size - 1) // page_size
@@ -388,9 +429,8 @@ def transaction_list(db, txs, shares_by_tx, month, rules):
         start = (page - 1) * page_size
         previous_day = None
         for t in sorted_txs[start:start + page_size]:
-            date_str = date.fromisoformat(t['date']).strftime('%d %b')
             if t['date'] != previous_day:
-                st.caption(date.fromisoformat(t['date']).strftime('%A, %d %b'))
+                st.html(f'<p class="day-label">{date.fromisoformat(t["date"]):%A, %d %b}</p>')
                 previous_day = t['date']
             sign = '+' if t['direction'] == 'credit' else '−'
             tone = 'credit' if t['direction'] == 'credit' else 'debit'
