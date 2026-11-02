@@ -15,8 +15,8 @@ def test_status_thresholds(allowance, status):
 
 
 @pytest.mark.parametrize("silo,caption", [
-    (999, "₹1 over today · covered by silo"),
-    (-1, "₹1 over today · silo is negative"),
+    (999, "₹1 over today · covered by savings"),
+    (-1, "₹1 over today · savings go negative"),
 ])
 def test_food_caption_explains_overspending(silo, caption):
     assert food_caption({"today_food_spend": 351, "food_silo_after_today": silo}) == caption

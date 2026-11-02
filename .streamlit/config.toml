@@ -1,14 +1,15 @@
 [theme]
-font = "sans-serif"
+font = "'Schibsted Grotesk':https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400..900&display=swap"
+baseRadius = "small"
 
 [theme.light]
-primaryColor = "#3568a8"
-backgroundColor = "#f8f9fa"
-secondaryBackgroundColor = "#eef1f4"
-textColor = "#1a1d21"
+primaryColor = "#a8680a"
+backgroundColor = "#f7f7f5"
+secondaryBackgroundColor = "#ecece8"
+textColor = "#1b1d20"
 
 [theme.dark]
-primaryColor = "#7da5de"
-backgroundColor = "#15171a"
-secondaryBackgroundColor = "#202328"
-textColor = "#e7e9ed"
+primaryColor = "#e3a63a"
+backgroundColor = "#161718"
+secondaryBackgroundColor = "#222325"
+textColor = "#e9e8e4"

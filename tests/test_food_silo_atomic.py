@@ -49,3 +49,19 @@ def test_missing_or_invalid_checkpoint_preserves_balance(database, checkpoint):
     db.update_food_silo(date(2026, 10, 20))
     assert float(db.get_setting("food_silo_balance")) == 1000
     assert db.get_setting("food_silo_last_update") == "2026-10-20"
+
+
+def test_backdated_food_reaches_silo_but_not_before_a_reset(database):
+    db.set_setting("food_silo_balance", 1000)
+    db.set_setting("food_silo_last_update", "2026-10-20")
+    db.add_transaction("2026-10-18", "Late SMS lunch", 100)
+    assert float(db.get_setting("food_silo_balance")) == 900
+    db.delete_transaction(db.get_transactions("2026-10")[0]["id"])
+    assert float(db.get_setting("food_silo_balance")) == 1000
+    with patch.object(db, "today_ist", return_value=date(2026, 10, 20)):
+        db.set_food_silo_zero()
+    db.add_transaction("2026-10-18", "Pre-reset dinner", 200)  # before the reset: ignored
+    tx = db.get_transactions("2026-10")[0]
+    db.update_category(tx["id"], "Other")
+    db.delete_transaction(tx["id"])
+    assert float(db.get_setting("food_silo_balance")) == 0

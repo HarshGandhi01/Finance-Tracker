@@ -8,6 +8,7 @@ from datetime import datetime
 from pypdf import PdfReader
 
 import db
+from sms_parser import categorize
 
 PDF_PATH = "gpay_statement_20260801_20260831.pdf"
 
@@ -77,7 +78,8 @@ def parse_statement():
         except ValueError:
             continue
 
-        if db.add_transaction(dt, merchant, amount, direction=direction, upi_ref=upi_ref):
+        if db.add_transaction(dt, merchant, amount, direction=direction,
+                             category=categorize(merchant, direction), upi_ref=upi_ref):
             count += 1
 
     print(f"Successfully imported {count} unique transactions.")
