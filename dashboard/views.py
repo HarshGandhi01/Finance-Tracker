@@ -59,11 +59,13 @@ def render_overview(db):
     current = snapshot["month"] == snapshot["month_now"]
     if "notice" in st.session_state:
         st.toast(st.session_state.pop("notice"))
-    hero = st.empty()
+    # Wide screens: answer on the left, figures on the right. Streamlit stacks these on phones.
+    top_left, top_right = st.columns([1.15, 1], gap="large", vertical_alignment="center")
+    hero = top_left.empty()
     # Seed the widget through session state only, so Streamlit never sees two defaults.
     if st.session_state.get("money_date", today) <= today:
         st.session_state["money_date"] = next_25th(today)
-    with st.expander("Change dates"):
+    with top_left.expander("Change dates"):
         cycle_col, scope_col, date_col = st.columns(3)
         with cycle_col:
             month = st.selectbox("Budget cycle", snapshot["month_options"], key="budget_cycle",
@@ -101,19 +103,40 @@ def render_overview(db):
         ("Food savings", inr(m["food_rollover"]), f"{inr(m['food_silo_after_today'])} after today"),
         ("Owed to you", inr(outstanding), "From split bills"),
     ]
-    st.html('<div class="figures">' + "".join(
-        f'<div class="figure"><strong>{escape(value)}</strong><span>{label}</span>'
-        f'<small>{escape(caption)}</small></div>' for label, value, caption in figures) + "</div>")
-    manual_transaction_editor(db, today)
+    with top_right:
+        st.html('<div class="figures">' + "".join(
+            f'<div class="figure"><strong>{escape(value)}</strong><span>{label}</span>'
+            f'<small>{escape(caption)}</small></div>' for label, value, caption in figures) + "</div>")
+        manual_transaction_editor(db, today)
     txs = m["txs"]
+    chart_col, category_col = st.columns([2, 1], gap="large")
+    with chart_col:
+        spending_chart(txs, m, plan_end if current else m["cycle_end"], today)
+    with category_col:
+        category_breakdown(txs)
+    shares_by_tx = {}
+    for share in snapshot["shares"]:
+        shares_by_tx.setdefault(share["transaction_id"], []).append(share)
+    ledger_col, side_col = st.columns([2, 1], gap="large")
+    with ledger_col:
+        transaction_list(db, txs, shares_by_tx, month, snapshot["merchant_categories"])
+    with side_col:
+        repayment_editor(db, snapshot["shares"], snapshot["credits"], today)
+        budget_explainer(m, days, allowance)
+
+
+def spending_chart(txs, m, chart_end, today):
     st.subheader("Spending this cycle")
     if txs:
         st.caption("Money back and refunds are subtracted. The dotted line continues your current pace.")
-        fig = burn_rate_line(pd.DataFrame(txs), TARGET_DAILY, m["cycle_start"],
-                             plan_end if current else m["cycle_end"], today, balance=m["balance"])
+        fig = burn_rate_line(pd.DataFrame(txs), TARGET_DAILY, m["cycle_start"], chart_end, today,
+                             balance=m["balance"])
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     else:
         st.caption("Your spending line appears after your first payment.")
+
+
+def category_breakdown(txs):
     totals = {}
     for tx in txs:
         if tx["direction"] == "debit" and tx["personal_amount"] > 0:
@@ -126,11 +149,9 @@ def render_overview(db):
             f'<small>{amount / total * 100:.0f}%</small></div><div class="category-track">'
             f'<span style="width:{amount / total * 100:.1f}%"></span></div>'
             for label, amount in sorted(totals.items(), key=lambda item: item[1], reverse=True)))
-    shares_by_tx = {}
-    for share in snapshot["shares"]:
-        shares_by_tx.setdefault(share["transaction_id"], []).append(share)
-    transaction_list(db, txs, shares_by_tx, month, snapshot["merchant_categories"])
-    repayment_editor(db, snapshot["shares"], snapshot["credits"], today)
+
+
+def budget_explainer(m, days, allowance):
     with st.expander("How this is worked out"):
         st.write(f"Daily amount: {inr(m['balance'], 2)} balance ÷ {days} days = {inr(allowance, 2)}.")
         st.write(f"Not yet: at least {inr(TARGET_DAILY * 1.25, 2)} a day. "

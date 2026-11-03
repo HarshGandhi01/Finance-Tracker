@@ -1,7 +1,7 @@
 /* Streamlit owns widgets and theme colours; this file only lays out our own text.
    Heat colours (--fine/--tight/--cooked) are set per theme in theme.apply_theme. */
 /* No tabular-nums: in this face it widens "." and ",", which reads as "₹6 ,020". */
-.block-container { max-width: 720px; padding-top: 4.5rem; padding-bottom: 4rem; }
+.block-container { max-width: 1240px; padding-top: 4.5rem; padding-bottom: 4rem; }
 h2, h3 { letter-spacing: -0.01em; }
 
 /* Hero: the app's name is the question, the page answers it. */
@@ -13,7 +13,7 @@ h2, h3 { letter-spacing: -0.01em; }
 .allowance-note { color: var(--muted); margin: .35rem 0 0; font-size: .95rem; }
 
 /* Heat scale: three bands at the real thresholds, marker at today's allowance. */
-.heat { position: relative; margin: 1.6rem 0 2.6rem; }
+.heat { position: relative; margin: 1.6rem 0 2.4rem; max-width: 560px; }
 .heat-bands { display: flex; height: 8px; gap: 2px; }
 .heat-bands span { opacity: .28; }
 .heat-bands span.on { opacity: 1; }
@@ -26,7 +26,7 @@ h2, h3 { letter-spacing: -0.01em; }
              transform: translateX(-50%); white-space: nowrap; }
 
 /* Figures: a plain row, not cards. Value first, what it means underneath. */
-.figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem;
+.figures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.4rem 1.25rem;
            padding: 1.1rem 0; margin-bottom: 1.25rem;
            border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .figure strong { display: block; font-size: 1.3rem; font-weight: 650; letter-spacing: -0.01em; }
@@ -57,7 +57,7 @@ h2, h3 { letter-spacing: -0.01em; }
 
 @media (max-width: 600px) {
   .block-container { padding-left: 1rem; padding-right: 1rem; padding-top: 3.8rem; }
-  .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem 1rem; }
+  .figures { gap: 1.1rem 1rem; }
   .figure strong { font-size: 1.2rem; }
   .row-vendor, .row-amount { font-size: .9rem; }
 }
