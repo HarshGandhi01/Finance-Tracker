@@ -458,7 +458,8 @@ def transaction_list(db, txs, shares_by_tx, month, rules):
             st.subheader('Transactions')
         with search:
             query = st.text_input('Search vendor or person', placeholder='Search', label_visibility='collapsed', key='ledger_search')
-        cat_options = list(db.get_categories()) + sorted({t['category'] for t in txs if t['category'] not in db.get_categories()})
+        base_cats = list(db.get_categories())  # one DB read, not two per rerun
+        cat_options = base_cats + sorted({t['category'] for t in txs if t['category'] not in base_cats})
         with category:
             selected = st.selectbox('Filter by category', ['All categories'] + cat_options, label_visibility='collapsed', key='ledger_category')
         matches = [t for t in txs if query.casefold().strip() in t['merchant'].casefold()
@@ -480,30 +481,32 @@ def transaction_list(db, txs, shares_by_tx, month, rules):
             if t['date'] != previous_day:
                 st.html(f'<p class="day-label">{date.fromisoformat(t["date"]):%A, %d %b}</p>')
                 previous_day = t['date']
-            sign = '+' if t['direction'] == 'credit' else '−'
-            tone = 'credit' if t['direction'] == 'credit' else 'debit'
-            detail = ''
-            if t['personal_amount'] != t['amount']:
-                detail = f"Your share {inr(t['personal_amount'], 2)}"
-            elif t['is_repayment']:
-                detail = 'Split repayment'
-            elif t['direction'] == 'debit' and db.normalize_merchant(t['merchant']) in rules:
-                detail = 'Vendor rule saved'
-            with st.container(key=f"ledger_row_{t['id']}"):
-                with st.container(horizontal=True, vertical_alignment='center', gap='small'):
-                    with st.container(width='stretch'):
-                        st.markdown(f'<div class="ledger-row"><div class="row-vendor">'
-                                    f'<span title="{escape(t["merchant"], quote=True)}">{escape(t["merchant"])}</span>'
-                                    f'<small>{escape(t["category"])}{(" · " + escape(detail)) if detail else ""}</small></div>'
-                                    f'<span class="row-amount {tone}">{sign}{inr(t["amount"], 2)}</span></div>', unsafe_allow_html=True)
-                    with st.container(width=42):
-                        if st.button('', icon=':material/edit:', key=f'edit_{t["id"]}',
-                                     help='Edit this transaction'):
-                            st.session_state['ledger_edit'] = (
-                                None if st.session_state.get('ledger_edit') == t['id'] else t['id'])
-                            st.rerun(scope='fragment')
-                if st.session_state.get('ledger_edit') == t['id']:
-                    transaction_editor(db, t, cat_options, shares_by_tx.get(t['id'], []), rules)
+            ledger_row(db, t, cat_options, shares_by_tx.get(t['id'], []), rules)
         st.caption(f'Showing {start + 1}–{min(start + page_size, len(sorted_txs))} of {len(sorted_txs)} transactions')
+
+
+@st.fragment
+def ledger_row(db, t, cat_options, existing_splits, rules):
+    # Each row is its own fragment: opening/closing the editor reruns only this row, not all 25.
+    sign = '+' if t['direction'] == 'credit' else '−'
+    tone = 'credit' if t['direction'] == 'credit' else 'debit'
+    detail = ''
+    if t['personal_amount'] != t['amount']:
+        detail = f"Your share {inr(t['personal_amount'], 2)}"
+    elif t['is_repayment']:
+        detail = 'Split repayment'
+    elif t['direction'] == 'debit' and db.normalize_merchant(t['merchant']) in rules:
+        detail = 'Vendor rule saved'
+    with st.container(key=f"ledger_row_{t['id']}"):
+        row, edit = st.columns([20, 1], vertical_alignment='center')
+        row.markdown(f'<div class="ledger-row"><div class="row-vendor">'
+                     f'<span title="{escape(t["merchant"], quote=True)}">{escape(t["merchant"])}</span>'
+                     f'<small>{escape(t["category"])}{(" · " + escape(detail)) if detail else ""}</small></div>'
+                     f'<span class="row-amount {tone}">{sign}{inr(t["amount"], 2)}</span></div>', unsafe_allow_html=True)
+        if edit.button('', icon=':material/edit:', key=f'edit_{t["id"]}', help='Edit this transaction'):
+            st.session_state['ledger_edit'] = (
+                None if st.session_state.get('ledger_edit') == t['id'] else t['id'])
+        if st.session_state.get('ledger_edit') == t['id']:
+            transaction_editor(db, t, cat_options, existing_splits, rules)
 
 
