@@ -113,8 +113,9 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today, balance=Non
         font=dict(family="'Schibsted Grotesk', sans-serif", color=muted, size=12),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         height=260, margin=dict(l=0, r=8, t=30, b=0), showlegend=False,
-        xaxis=dict(showgrid=False, showline=False, zeroline=False, tickformat="%d %b", nticks=5),
+        dragmode=False,
+        xaxis=dict(showgrid=False, showline=False, zeroline=False, tickformat="%d %b", nticks=5, fixedrange=True),
         yaxis=dict(showgrid=True, gridcolor="rgba(128,128,128,0.12)", showline=False,
-                   zeroline=False, tickformat=",d", tickprefix="₹", nticks=4),
+                   zeroline=False, tickformat=",d", tickprefix="₹", nticks=4, fixedrange=True),
     )
     return fig

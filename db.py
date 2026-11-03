@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
-DEFAULT_CATEGORIES = ["Food", "Protein", "Laundry", "Sports", "Pocket Money", "Outing", "Other"]
+DEFAULT_CATEGORIES = ["Food", "Protein", "Laundry", "Sports", "Pocket Money", "Outing", "Poker", "Other"]
 
 DEFAULT_FUNDS = {}
 
@@ -151,6 +151,13 @@ def init_db():
                 c.execute(text("INSERT INTO sinking_funds(name,monthly_amount) VALUES (:n,:a) "
                                "ON CONFLICT(name) DO NOTHING"), {'n': name, 'a': amt})
             c.execute(text("INSERT INTO settings(key,value) VALUES ('categories_seeded','1')"))
+        # Poker arrived after the first seed; add it once to already-seeded databases too.
+        if not _rows(c, "SELECT 1 FROM settings WHERE key='poker_seeded'"):
+            if not _rows(c, "SELECT 1 FROM categories WHERE name_key='poker'"):
+                order = _rows(c, "SELECT COALESCE(MAX(sort_order),-1)+1 AS n FROM categories")[0]["n"]
+                c.execute(text("INSERT INTO categories(name,name_key,sort_order,is_system) "
+                               "VALUES ('Poker','poker',:o,0)"), {"o": order})
+            c.execute(text("INSERT INTO settings(key,value) VALUES ('poker_seeded','1')"))
     _INITED = True
 
 

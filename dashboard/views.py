@@ -97,12 +97,22 @@ def render_overview(db):
             st.page_link("settings.py", label="Set balance", icon=":material/account_balance:")
     outstanding = sum(max(s["cents"] / 100 - s["repaid"], 0)
                       for s in snapshot["shares"] if s["date"] <= str(today))
+    breakdown_month = str(today)[:7] if current else None
+    # Poker nets winnings (credits) against buy-ins/losses (debits).
+    poker_txs = [t for t in m["txs"] if t["category"] == "Poker"
+                 and (not breakdown_month or t["date"][:7] == breakdown_month)]
+    poker_net = sum(t["amount"] if t["direction"] == "credit" else -t["personal_amount"]
+                    for t in poker_txs)
     figures = [
         ("Balance", inr(m["balance"]) if m["has_balance"] else "Not set", "In your account now"),
         ("Food left today", inr(m["food_remaining_today"]), food_caption(m)),
         ("Food savings", inr(m["food_rollover"]), f"{inr(m['food_silo_after_today'])} after today"),
         ("Owed to you", inr(outstanding), "From split bills"),
     ]
+    if poker_txs:
+        net_str = f"+{inr(poker_net)}" if poker_net > 0 else inr(poker_net)
+        figures.append(("Poker", net_str,
+                        f"Wins − losses {'this month' if breakdown_month else 'this cycle'}"))
     with top_right:
         st.html('<div class="stat-list">' + "".join(
             f'<div class="stat"><div class="stat-main"><div class="stat-label">{escape(label)}</div>'
@@ -115,7 +125,7 @@ def render_overview(db):
     with chart_col:
         spending_chart(txs, m, plan_end if current else m["cycle_end"], today)
     with category_col:
-        category_breakdown(txs, str(today)[:7] if current else None)
+        category_breakdown(txs, breakdown_month)
     shares_by_tx = {}
     for share in snapshot["shares"]:
         shares_by_tx.setdefault(share["transaction_id"], []).append(share)
