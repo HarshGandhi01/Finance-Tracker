@@ -104,9 +104,11 @@ def render_overview(db):
         ("Owed to you", inr(outstanding), "From split bills"),
     ]
     with top_right:
-        st.html('<div class="figures">' + "".join(
-            f'<div class="figure"><strong>{escape(value)}</strong><span>{label}</span>'
-            f'<small>{escape(caption)}</small></div>' for label, value, caption in figures) + "</div>")
+        st.html('<div class="stat-list">' + "".join(
+            f'<div class="stat"><div class="stat-main"><div class="stat-label">{escape(label)}</div>'
+            f'<small class="stat-caption">{escape(caption)}</small></div>'
+            f'<div class="stat-value">{escape(value)}</div></div>'
+            for label, value, caption in figures) + "</div>")
         manual_transaction_editor(db, today)
     txs = m["txs"]
     chart_col, category_col = st.columns([2, 1], gap="large")

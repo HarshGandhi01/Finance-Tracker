@@ -25,13 +25,14 @@ h2, h3 { letter-spacing: -0.01em; }
 .heat-tick { position: absolute; top: 14px; font-size: .75rem; color: var(--muted);
              transform: translateX(-50%); white-space: nowrap; }
 
-/* Figures: a plain row, not cards. Value first, what it means underneath. */
-.figures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.4rem 1.25rem;
-           padding: 1.1rem 0; margin-bottom: 1.25rem;
-           border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.figure strong { display: block; font-size: 1.3rem; font-weight: 650; letter-spacing: -0.01em; }
-.figure span { display: block; font-size: .88rem; margin-top: .1rem; }
-.figure small { display: block; color: var(--muted); font-size: .78rem; line-height: 1.45; margin-top: .2rem; }
+/* Key figures: a statement list, not a grid of floating numbers. Label left, figure right. */
+.stat-list { border-top: 1px solid var(--line); margin-bottom: 1.25rem; }
+.stat { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem;
+        padding: .9rem 0; border-bottom: 1px solid var(--line); }
+.stat-main { min-width: 0; }
+.stat-label { font-size: .98rem; font-weight: 600; letter-spacing: -0.01em; }
+.stat-caption { display: block; color: var(--muted); font-size: .78rem; line-height: 1.4; margin-top: .15rem; }
+.stat-value { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
 
 .past-cycle { font-size: clamp(1.6rem, 5vw, 2.2rem); font-weight: 700; letter-spacing: -0.02em;
               line-height: 1.2; margin: .2rem 0 1.4rem; }
@@ -57,7 +58,6 @@ h2, h3 { letter-spacing: -0.01em; }
 
 @media (max-width: 600px) {
   .block-container { padding-left: 1rem; padding-right: 1rem; padding-top: 3.8rem; }
-  .figures { gap: 1.1rem 1rem; }
-  .figure strong { font-size: 1.2rem; }
+  .stat-value { font-size: 1.3rem; }
   .row-vendor, .row-amount { font-size: .9rem; }
 }
