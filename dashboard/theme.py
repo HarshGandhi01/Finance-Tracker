@@ -6,17 +6,17 @@ import plotly.graph_objects as go
 import streamlit as st
 
 
+# Neon Ledger: dark-only. Heat runs mint -> amber -> hot pink; violet/cyan carry the brand.
 PALETTE = {
-    # ink/muted follow the Streamlit theme text; heat runs cool green -> turmeric -> chilli.
-    "light": dict(ink="#1b1d20", muted="#62676e", line="rgba(27,29,32,.12)",
-                  fine="#2f7d5b", tight="#a8680a", cooked="#c43a2f"),
-    "dark": dict(ink="#e9e8e4", muted="#9a9ea5", line="rgba(233,232,228,.12)",
-                 fine="#5cb88c", tight="#e3a63a", cooked="#f0705f"),
+    "dark": dict(ink="#F2F0FF", muted="#8B86A8", line="rgba(242,240,255,.12)",
+                 fine="#2EE6A6", tight="#FFC23C", cooked="#FF3D7F",
+                 accent="#7C5CFF", accent2="#35E7FF", bg="#0B0A14", surface="#15131F"),
 }
+PALETTE["light"] = PALETTE["dark"]  # dark-only: never switch to a light palette
 
 
 def palette():
-    return PALETTE["light" if st.context.theme.type == "light" else "dark"]
+    return PALETTE["dark"]
 
 
 def apply_theme():
@@ -74,17 +74,18 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today, balance=Non
     daily_spend['cumulative'] = daily_spend['amount'].cumsum()
 
     fig = go.Figure()
-    dark = st.context.theme.type != "light"
+    dark = True
     colors = palette()
-    muted, accent = colors["muted"], colors["ink"]
+    muted, accent, cyan = colors["muted"], colors["accent"], colors["accent2"]
 
-    # Add actual spend line
+    # Add actual spend line — violet with a soft neon fill down to zero.
     fig.add_trace(go.Scatter(
         x=daily_spend['date'],
         y=daily_spend['cumulative'],
         mode='lines',
         name='Net Spend',
-        line=dict(color=accent, width=2.25, shape='hv'),
+        line=dict(color=accent, width=2.75, shape='hv'),
+        fill='tozeroy', fillcolor='rgba(124,92,255,0.12)',
         hovertemplate="Net spend: ₹%{y:,.0f}<extra></extra>"
     ))
 
@@ -104,9 +105,9 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today, balance=Non
 
     if cycle_start <= today <= cycle_end:
         fig.add_vline(x=pd.Timestamp(today).timestamp() * 1000, line_width=1,
-                      line_dash="dot", line_color=muted)
+                      line_dash="dot", line_color=cyan)
         fig.add_annotation(x=pd.Timestamp(today), y=1, yref="paper", text="Today",
-                           showarrow=False, font=dict(size=11, color=muted), yshift=12)
+                           showarrow=False, font=dict(size=11, color=cyan), yshift=12)
     fig.update_layout(
         template="plotly_dark" if dark else "plotly_white",
         font=dict(family="'Schibsted Grotesk', sans-serif", color=muted, size=12),

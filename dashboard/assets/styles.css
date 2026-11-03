@@ -1,63 +1,141 @@
-/* Streamlit owns widgets and theme colours; this file only lays out our own text.
-   Heat colours (--fine/--tight/--cooked) are set per theme in theme.apply_theme. */
+/* Neon Ledger — dark-only synthwave skin. Tokens (--bg/--surface/--ink/--muted/--line/
+   --fine/--tight/--cooked/--accent/--accent2) are injected per theme in theme.apply_theme.
+   All motion is disabled under prefers-reduced-motion (see bottom). */
 /* No tabular-nums: in this face it widens "." and ",", which reads as "₹6 ,020". */
-.block-container { max-width: 1240px; padding-top: 4.5rem; padding-bottom: 4rem; }
+
+.block-container { max-width: 1240px; padding-top: 4.5rem; padding-bottom: 4rem;
+                   position: relative; z-index: 1; }
 h2, h3 { letter-spacing: -0.01em; }
+/* Neon underline marks each section without shouting. */
+h2::after, h3::after { content: ""; display: block; width: 40px; height: 2px; margin-top: .45rem;
+                       background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 2px; }
 
-/* Hero: the app's name is the question, the page answers it. */
-.question { font-size: 1rem; color: var(--muted); margin: 0 0 .1rem; }
-.answer { font-size: clamp(3.4rem, 13vw, 5.6rem); font-weight: 850; line-height: .95;
-          letter-spacing: -0.045em; margin: 0 0 1rem; color: var(--heat); }
+/* ---------- Ambient aurora behind everything ---------- */
+[data-testid="stAppViewContainer"]::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(42% 50% at 18% 18%, rgba(124, 92, 255, 0.20), transparent 70%),
+    radial-gradient(38% 46% at 82% 28%, rgba(53, 231, 255, 0.14), transparent 70%),
+    radial-gradient(46% 52% at 62% 92%, rgba(255, 61, 127, 0.15), transparent 70%);
+  background-size: 180% 180%, 180% 180%, 180% 180%;
+  background-position: 0% 50%, 100% 50%, 50% 0%;
+  animation: aurora 26s ease-in-out infinite;
+}
+@keyframes aurora {
+  0%, 100% { background-position: 0% 50%, 100% 50%, 50% 0%; }
+  50%      { background-position: 100% 50%, 0% 50%, 50% 100%; }
+}
+
+/* ---------- Hero ---------- */
+.question { font-size: 1rem; color: var(--muted); margin: 0 0 .1rem;
+            animation: reveal-up .45s cubic-bezier(.2,.8,.2,1) .04s both; }
+.answer {
+  font-size: clamp(3.4rem, 13vw, 5.8rem); font-weight: 900; line-height: .95;
+  letter-spacing: -0.05em; margin: 0 0 1rem;
+  /* color-mix-free so the gradient (and therefore the text) can never fail to render. */
+  background: linear-gradient(104deg, var(--heat), #ffffff);
+  -webkit-background-clip: text; background-clip: text;
+  color: var(--heat); -webkit-text-fill-color: transparent;
+  animation: reveal-up .5s cubic-bezier(.2,.8,.2,1) .08s both,
+             pulse-glow 2.8s ease-in-out .6s infinite;
+}
 .allowance { font-size: clamp(1.35rem, 4.5vw, 1.75rem); font-weight: 600; line-height: 1.25;
-             letter-spacing: -0.015em; margin: 0; }
-.allowance-note { color: var(--muted); margin: .35rem 0 0; font-size: .95rem; }
+             letter-spacing: -0.015em; margin: 0;
+             animation: reveal-up .45s cubic-bezier(.2,.8,.2,1) .16s both; }
+.allowance-note { color: var(--muted); margin: .35rem 0 0; font-size: .95rem;
+                  animation: reveal-up .45s cubic-bezier(.2,.8,.2,1) .22s both; }
+.past-cycle { font-size: clamp(1.6rem, 5vw, 2.2rem); font-weight: 800; letter-spacing: -0.02em;
+              line-height: 1.2; margin: .2rem 0 1.4rem;
+              animation: reveal-up .5s cubic-bezier(.2,.8,.2,1) .08s both; }
 
-/* Heat scale: three bands at the real thresholds, marker at today's allowance. */
-.heat { position: relative; margin: 1.6rem 0 2.4rem; max-width: 560px; }
+@keyframes reveal-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes pulse-glow {
+  0%, 100% { filter: drop-shadow(0 0 12px color-mix(in srgb, var(--heat) 32%, transparent)); }
+  50%      { filter: drop-shadow(0 0 28px color-mix(in srgb, var(--heat) 62%, transparent)); }
+}
+
+/* ---------- Heat scale ---------- */
+.heat { position: relative; margin: 1.6rem 0 2.4rem; max-width: 560px;
+        animation: reveal-up .45s cubic-bezier(.2,.8,.2,1) .3s both; }
 .heat-bands { display: flex; height: 8px; gap: 2px; }
-.heat-bands span { opacity: .28; }
+.heat-bands span { opacity: .26; position: relative; overflow: hidden; }
 .heat-bands span.on { opacity: 1; }
 .heat-bands span:nth-child(1) { background: var(--cooked); border-radius: 4px 0 0 4px; }
 .heat-bands span:nth-child(2) { background: var(--tight); }
 .heat-bands span:nth-child(3) { background: var(--fine); border-radius: 0 4px 4px 0; }
+.heat-bands span.on::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent);
+  animation: shimmer 2.4s ease-in-out .8s infinite; }
+@keyframes shimmer { to { transform: translateX(100%); } }
 .heat-marker { position: absolute; top: -5px; width: 4px; height: 18px; margin-left: -2px;
-               border-radius: 2px; background: var(--ink); }
+               border-radius: 2px; background: var(--ink);
+               box-shadow: 0 0 10px 1px var(--accent2); }
 .heat-tick { position: absolute; top: 14px; font-size: .75rem; color: var(--muted);
              transform: translateX(-50%); white-space: nowrap; }
 
-/* Key figures: a statement list, not a grid of floating numbers. Label left, figure right. */
+/* ---------- Key figures: statement list ---------- */
 .stat-list { border-top: 1px solid var(--line); margin-bottom: 1.25rem; }
 .stat { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem;
-        padding: .9rem 0; border-bottom: 1px solid var(--line); }
+        padding: .9rem .3rem; border-bottom: 1px solid var(--line);
+        border-left: 2px solid transparent;
+        transition: background .18s ease, transform .18s ease, border-color .18s ease;
+        animation: reveal-up .45s cubic-bezier(.2,.8,.2,1) both; }
+.stat:nth-child(1) { animation-delay: .26s; }
+.stat:nth-child(2) { animation-delay: .32s; }
+.stat:nth-child(3) { animation-delay: .38s; }
+.stat:nth-child(4) { animation-delay: .44s; }
+.stat:hover { background: color-mix(in srgb, var(--accent) 9%, transparent);
+              border-left-color: var(--accent); transform: translateX(3px); }
 .stat-main { min-width: 0; }
 .stat-label { font-size: .98rem; font-weight: 600; letter-spacing: -0.01em; }
 .stat-caption { display: block; color: var(--muted); font-size: .78rem; line-height: 1.4; margin-top: .15rem; }
-.stat-value { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
+.stat-value { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap;
+              text-shadow: 0 0 16px color-mix(in srgb, var(--ink) 16%, transparent); }
 
-.past-cycle { font-size: clamp(1.6rem, 5vw, 2.2rem); font-weight: 700; letter-spacing: -0.02em;
-              line-height: 1.2; margin: .2rem 0 1.4rem; }
-
-/* Category breakdown */
+/* ---------- Category breakdown ---------- */
 .category-line { display: flex; align-items: baseline; gap: .8rem; margin-top: .9rem; font-size: .92rem; }
 .category-line span { flex: 1; }
 .category-line b { font-weight: 600; }
 .category-line small { color: var(--muted); min-width: 2.6em; text-align: right; }
-.category-track { height: 4px; background: var(--line); border-radius: 2px; margin: .45rem 0 0; }
-.category-track span { display: block; height: 100%; border-radius: 2px; background: var(--ink); opacity: .7; }
+.category-track { height: 5px; background: var(--line); border-radius: 3px; margin: .45rem 0 0; overflow: hidden; }
+.category-track span { display: block; height: 100%; border-radius: 3px; transform-origin: left;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 45%, transparent);
+  animation: grow-x .7s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
-/* Ledger */
+/* ---------- Ledger ---------- */
 .day-label { color: var(--muted); font-size: .82rem; margin: 1.1rem 0 .1rem; }
 .ledger-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; align-items: center; min-height: 48px; }
 .row-vendor { min-width: 0; font-size: .95rem; }
 .row-vendor > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-vendor small { display: block; color: var(--muted); font-size: .78rem; line-height: 1.45; }
 .row-amount { text-align: right; white-space: nowrap; font-size: .95rem; font-weight: 550; }
-.row-amount.credit { color: var(--fine); }
+.row-amount.credit { color: var(--fine); text-shadow: 0 0 12px color-mix(in srgb, var(--fine) 40%, transparent); }
 [class*="st-key-ledger_row_"] > div { min-width: 0; }
 [class*="st-key-ledger_row_"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap; }
+[class*="st-key-ledger_row_"] { border-left: 2px solid transparent; border-radius: 6px;
+  padding: 0 .4rem; transition: background .16s ease, border-color .16s ease; }
+[class*="st-key-ledger_row_"]:hover { background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-left-color: var(--accent); }
+
+/* ---------- Buttons ---------- */
+.stButton > button { transition: box-shadow .18s ease, border-color .18s ease, transform .1s ease; }
+.stButton > button:hover { border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 18px color-mix(in srgb, var(--accent) 35%, transparent); }
+.stButton > button:active { transform: translateY(1px); }
+.stButton > button[kind="primary"] { border: none; color: #0B0A14; font-weight: 700;
+  background: linear-gradient(104deg, var(--accent), var(--accent2)); }
+.stButton > button[kind="primary"]:hover {
+  box-shadow: 0 0 22px color-mix(in srgb, var(--accent2) 45%, transparent); }
 
 @media (max-width: 600px) {
   .block-container { padding-left: 1rem; padding-right: 1rem; padding-top: 3.8rem; }
   .stat-value { font-size: 1.3rem; }
   .row-vendor, .row-amount { font-size: .9rem; }
+}
+
+/* Respect reduced-motion: kill all animation + transition, keep the static neon look. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }
