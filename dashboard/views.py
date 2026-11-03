@@ -113,7 +113,7 @@ def render_overview(db):
     with chart_col:
         spending_chart(txs, m, plan_end if current else m["cycle_end"], today)
     with category_col:
-        category_breakdown(txs)
+        category_breakdown(txs, str(today)[:7] if current else None)
     shares_by_tx = {}
     for share in snapshot["shares"]:
         shares_by_tx.setdefault(share["transaction_id"], []).append(share)
@@ -136,13 +136,18 @@ def spending_chart(txs, m, chart_end, today):
         st.caption("Your spending line appears after your first payment.")
 
 
-def category_breakdown(txs):
+def category_breakdown(txs, month_prefix=None):
+    # month_prefix (YYYY-MM) limits the breakdown to one calendar month, so it resets on the 1st.
+    if month_prefix:
+        txs = [t for t in txs if t["date"][:7] == month_prefix]
     totals = {}
     for tx in txs:
         if tx["direction"] == "debit" and tx["personal_amount"] > 0:
             totals[tx["category"]] = totals.get(tx["category"], 0) + tx["personal_amount"]
     if totals:
         st.subheader("Where it went")
+        if month_prefix:
+            st.caption(f"{date.fromisoformat(month_prefix + '-01'):%B} so far.")
         total = sum(totals.values())
         st.html("".join(
             f'<div class="category-line"><span>{escape(label)}</span><b>{inr(amount)}</b>'
@@ -167,6 +172,10 @@ def render_settings(db):
     today = db.today_ist()
     snapshot = db.load_dashboard(today, target_daily=TARGET_DAILY)
     st.title("Settings")
+    st.caption("Balance, categories, and your cycle. Everything here saves straight away.")
+    if "notice" in st.session_state:
+        st.success(st.session_state.pop("notice"))
+
     st.subheader("Balance")
     st.caption("Enter what your bank app shows. New payments are added on top of it.")
     with st.form("balance_adjustment", border=False):
@@ -176,9 +185,12 @@ def render_settings(db):
             db.set_balance(balance)
             st.session_state["notice"] = "Balance updated."
             st.rerun()
-    if "notice" in st.session_state:
-        st.success(st.session_state.pop("notice"))
+
+    st.divider()
     category_manager(db)
+
+    st.divider()
+    st.subheader("Cycle & savings")
     with st.expander("Pocket-money cycle", expanded=not snapshot["receipt_dates"]):
         st.caption("Your cycle starts on the date of a received credit marked Pocket Money.")
         credits = {t["id"]: t for t in snapshot["credits"]
@@ -202,6 +214,7 @@ def render_settings(db):
             db.set_food_silo_zero()
             st.session_state["notice"] = "Food savings reset."
             st.rerun()
+    st.divider()
     with st.expander(f"Bank texts I couldn't read ({len(snapshot['unparsed'])})"):
         if not snapshot["unparsed"]:
             st.caption("Every bank text so far was understood.")
@@ -297,10 +310,10 @@ def split_fields(db, amount, key, existing=None):
 
 
 
-@st.fragment
 def transaction_editor(db, t, cat_options, existing_splits, rules):
-    with st.popover("", icon=":material/edit:", key=f"edit_{t['id']}", help="Edit this transaction", width="content"):
-        st.subheader("Edit transaction")
+    # Rendered inline only for the row being edited, so the ledger builds 1 editor, not 25.
+    with st.container(border=True):
+        st.caption(f"Editing {t['merchant']}")
         merchant = st.text_input("Vendor or person", value=t['merchant'], key=f"merchant_{t['id']}")
         new_cat = st.selectbox("Category", options=cat_options,
                               index=cat_options.index(t['category']), key=f"cat_{t['id']}")
@@ -317,6 +330,7 @@ def transaction_editor(db, t, cat_options, existing_splits, rules):
                 try:
                     db.edit_transaction(t['id'], merchant, new_cat, remember)
                     st.session_state['notice'] = 'Transaction updated. Vendor rule saved.' if remember else 'Transaction updated.'
+                    st.session_state.pop('ledger_edit', None)
                     st.rerun()
                 except ValueError as exc:
                     st.error(str(exc))
@@ -325,6 +339,7 @@ def transaction_editor(db, t, cat_options, existing_splits, rules):
                 try:
                     db.delete_transaction(t['id'])
                     st.session_state['notice'] = 'Transaction deleted.'
+                    st.session_state.pop('ledger_edit', None)
                     st.rerun()
                 except ValueError as exc:
                     st.error(str(exc))
@@ -470,7 +485,13 @@ def transaction_list(db, txs, shares_by_tx, month, rules):
                                     f'<small>{escape(t["category"])}{(" · " + escape(detail)) if detail else ""}</small></div>'
                                     f'<span class="row-amount {tone}">{sign}{inr(t["amount"], 2)}</span></div>', unsafe_allow_html=True)
                     with st.container(width=42):
-                        transaction_editor(db, t, cat_options, shares_by_tx.get(t['id'], []), rules)
+                        if st.button('', icon=':material/edit:', key=f'edit_{t["id"]}',
+                                     help='Edit this transaction'):
+                            st.session_state['ledger_edit'] = (
+                                None if st.session_state.get('ledger_edit') == t['id'] else t['id'])
+                            st.rerun(scope='fragment')
+                if st.session_state.get('ledger_edit') == t['id']:
+                    transaction_editor(db, t, cat_options, shares_by_tx.get(t['id'], []), rules)
         st.caption(f'Showing {start + 1}–{min(start + page_size, len(sorted_txs))} of {len(sorted_txs)} transactions')
 
 
