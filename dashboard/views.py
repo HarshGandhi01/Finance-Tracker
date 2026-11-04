@@ -100,10 +100,11 @@ def render_overview(db):
     outstanding = sum(max(s["cents"] / 100 - s["repaid"], 0)
                       for s in snapshot["shares"] if s["date"] <= str(today))
     breakdown_month = str(today)[:7] if current else None
-    # Poker nets winnings (credits) against buy-ins/losses (debits).
+    # Net = cash in (credits) − cash out (debits). Poker cash is never split, so payouts
+    # count in full; as the bank a losing night shows because payouts exceed buy-ins collected.
     poker_txs = [t for t in m["txs"] if t["category"] == "Poker"
                  and (not breakdown_month or t["date"][:7] == breakdown_month)]
-    poker_net = sum(t["amount"] if t["direction"] == "credit" else -t["personal_amount"]
+    poker_net = sum(t["amount"] if t["direction"] == "credit" else -t["amount"]
                     for t in poker_txs)
     figures = [
         ("Balance", inr(m["balance"]) if m["has_balance"] else "Not set", "In your account now"),
