@@ -17,10 +17,11 @@ def budget_status(allowance, target=TARGET_DAILY):
 
 
 def food_caption(metrics):
-    if metrics["today_food_spend"] > TARGET_DAILY:
+    target = metrics["target_daily"]
+    if metrics["today_food_spend"] > target:
         coverage = "savings go negative" if metrics["food_silo_after_today"] < 0 else "covered by savings"
-        return f"{inr(metrics['today_food_spend'] - TARGET_DAILY)} over today · {coverage}"
-    return f"{inr(metrics['today_food_spend'])} spent of {inr(TARGET_DAILY)}"
+        return f"{inr(metrics['today_food_spend'] - target)} over today · {coverage}"
+    return f"{inr(metrics['today_food_spend'])} spent of {inr(target)}"
 
 
 VERDICT = {"Comfortable": "Not yet.", "Tight": "Almost.", "Cooked": "Yes."}
@@ -52,8 +53,9 @@ def allowance_note(balance, allowance, target=TARGET_DAILY):
 
 def render_overview(db):
     today = db.today_ist()
-    snapshot = db.load_dashboard(today, st.session_state.get("budget_cycle"), TARGET_DAILY)
+    snapshot = db.load_dashboard(today, st.session_state.get("budget_cycle"))
     m = snapshot["metrics"]
+    target = m["target_daily"]
     if st.session_state.get("budget_cycle") not in snapshot["month_options"]:
         st.session_state["budget_cycle"] = snapshot["month"]
     current = snapshot["month"] == snapshot["month_now"]
@@ -79,7 +81,7 @@ def render_overview(db):
     plan_end = money_date - timedelta(days=1) if scope == "Until money date" else m["cycle_end"]
     days = max((plan_end - today).days + 1, 1)
     allowance = m["safe_to_spend"] / days
-    status = budget_status(allowance)
+    status = budget_status(allowance, target)
     if not current:
         # Today's allowance means nothing for a closed cycle; summarise it instead.
         hero.html(f'<p class="question">Cycle {m["cycle_start"]:%d %b} to {m["cycle_end"]:%d %b %Y}</p>'
@@ -88,8 +90,8 @@ def render_overview(db):
         hero.html(f'<p class="question">Am I cooked?</p>'
                   f'<h1 class="answer" style="--heat:var(--{HEAT[status]})">{VERDICT[status]}</h1>'
                   f'<p class="allowance">{inr(max(allowance, 0))} a day until {plan_end:%d %b}</p>'
-                  f'<p class="allowance-note">{allowance_note(m["balance"], allowance)}</p>'
-                  + heat_scale(allowance, status))
+                  f'<p class="allowance-note">{allowance_note(m["balance"], allowance, target)}</p>'
+                  + heat_scale(allowance, status, target))
     else:
         with hero.container():
             st.html('<p class="question">Am I cooked?</p>'
@@ -170,10 +172,11 @@ def category_breakdown(txs, month_prefix=None):
 
 def budget_explainer(m, days, allowance):
     with st.expander("How this is worked out"):
+        target = m["target_daily"]
         st.write(f"Daily amount: {inr(m['balance'], 2)} balance ÷ {days} days = {inr(allowance, 2)}.")
-        st.write(f"Not yet: at least {inr(TARGET_DAILY * 1.25, 2)} a day. "
-                 f"Almost: {inr(TARGET_DAILY)} to {inr(TARGET_DAILY * 1.25, 2)}. "
-                 f"Yes: under {inr(TARGET_DAILY)}, your daily food budget.")
+        st.write(f"Not yet: at least {inr(target * 1.25, 2)} a day. "
+                 f"Almost: {inr(target)} to {inr(target * 1.25, 2)}. "
+                 f"Yes: under {inr(target)}, your daily food budget.")
         st.caption(f"This cycle runs {m['cycle_start']:%d %b} to {m['cycle_end']:%d %b %Y}. "
                    "Food savings are part of your balance, not extra cash. "
                    "Money you're owed counts only once it's paid back. "
@@ -182,7 +185,7 @@ def budget_explainer(m, days, allowance):
 
 def render_settings(db):
     today = db.today_ist()
-    snapshot = db.load_dashboard(today, target_daily=TARGET_DAILY)
+    snapshot = db.load_dashboard(today)
     st.title("Settings")
     st.caption("Balance, categories, and your cycle. Everything here saves straight away.")
     if "notice" in st.session_state:
@@ -196,6 +199,17 @@ def render_settings(db):
         if st.form_submit_button("Update balance"):
             db.set_balance(balance)
             st.session_state["notice"] = "Balance updated."
+            st.rerun()
+
+    st.divider()
+    st.subheader("Food budget")
+    st.caption("Your daily food target. The whole “cooked” verdict is measured against it.")
+    with st.form("food_budget", border=False):
+        target = st.number_input("Daily food budget (₹)", min_value=1.0, step=50.0, format="%.2f",
+                                 value=float(snapshot["metrics"]["target_daily"]))
+        if st.form_submit_button("Update food budget"):
+            db.set_setting("target_daily", str(target))
+            st.session_state["notice"] = "Food budget updated."
             st.rerun()
 
     st.divider()
@@ -237,6 +251,12 @@ def render_settings(db):
             if st.button("Clear", key=f"u_admin_{sms['id']}"):
                 db.delete_unparsed(sms["id"])
                 st.rerun()
+
+    st.divider()
+    st.subheader("Export")
+    st.caption("Every transaction as a spreadsheet, for backup or a closer look.")
+    st.download_button("Download transactions (CSV)", file_name="transactions.csv", mime="text/csv",
+                       data=pd.DataFrame(db.all_transactions()).to_csv(index=False))
 
 def category_manager(db):
     st.subheader("Categories")

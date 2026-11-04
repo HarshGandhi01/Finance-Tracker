@@ -98,7 +98,7 @@ class BudgetCycleTests(unittest.TestCase):
         db.add_transaction('2026-10-02', 'Lunch', 400, category='Food')
         first = db.compute_metrics('2026-10-01', date(2026, 10, 2))
         second = db.compute_metrics('2026-10-01', date(2026, 10, 2))
-        self.assertEqual(first['food_remaining_today'], 0)
+        self.assertEqual(first['food_remaining_today'], -50)
         self.assertEqual(second['food_silo_after_today'], 150)
         self.assertEqual(float(db.get_setting('food_silo_balance')), 200)
         db.update_food_silo(date(2026, 10, 3))
@@ -112,14 +112,15 @@ class BudgetCycleTests(unittest.TestCase):
         self.assertEqual(m['safe_to_spend'], 3100)
         self.assertEqual(m['daily_allowance'], 100)
 
-    def test_food_remaining_never_increases_with_spending(self):
+    def test_food_remaining_goes_negative_with_overspending(self):
         self.receipt('2026-10-01')
         db.set_setting('food_silo_balance', 1000)
         remaining = []
         for amount in (349, 1, 1, 1000):
             db.add_transaction('2026-10-02', 'Tea', amount)
             remaining.append(db.compute_metrics('2026-10-01', date(2026, 10, 2))['food_remaining_today'])
-        self.assertEqual(remaining, [1, 0, 0, 0])
+        # Past the budget it keeps falling; underspending on later days works it back up.
+        self.assertEqual(remaining, [1, 0, -1, -1001])
 
     def test_received_money_offsets_burn_without_double_counting_balance(self):
         self.receipt('2026-10-01')

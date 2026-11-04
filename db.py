@@ -398,6 +398,11 @@ def get_transactions(month: str, as_of: date | None = None):
                         s=str(start_date), e=str(end_date))
 
 
+def all_transactions():
+    with conn() as c:
+        return _rows(c, "SELECT * FROM transactions ORDER BY date, id")
+
+
 def delete_transaction(tx_id: int):
     with conn() as c:
         tx = _lock_transaction(c, tx_id)
@@ -797,13 +802,15 @@ def delete_unparsed(uid: int):
         c.execute(text("DELETE FROM unparsed_sms WHERE id=:i"), {"i": uid})
 
 
-def update_food_silo(today: date, target_daily: float = 350.0):
+def update_food_silo(today: date, target_daily: float | None = None):
     """Serialize the rollover and re-read its checkpoint inside the transaction."""
     today_str = str(today)
     with conn() as c:
         _lock_setting(c, "food_silo_last_update")
         settings = {r['key']: r['value'] for r in _rows(c, "SELECT key,value FROM settings "
-                    "WHERE key IN ('food_silo_last_update','food_silo_balance')")}
+                    "WHERE key IN ('food_silo_last_update','food_silo_balance','target_daily')")}
+        if target_daily is None:
+            target_daily = float(settings.get('target_daily', 350.0))
         last = settings['food_silo_last_update']
         try:
             last_date = date.fromisoformat(last)
@@ -826,8 +833,10 @@ def update_food_silo(today: date, target_daily: float = 350.0):
         c.execute(text("UPDATE settings SET value=:v WHERE key='food_silo_last_update'"), {'v': today_str})
 
 
-def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dict:
+def compute_metrics(month: str, today: date, target_daily: float | None = None) -> dict:
     settings = all_settings()
+    if target_daily is None:
+        target_daily = float(settings.get("target_daily", 350.0))
     txs = get_transactions(month, today)
     funds = get_funds()
 
@@ -896,7 +905,8 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
 
     # Today's overspend is settled into the silo tomorrow by update_food_silo.
     # Reading metrics must never deduct it again on every Streamlit rerun.
-    food_remaining_today = max(0.0, target_daily - today_food_spend)
+    # Not floored: overspending shows as a negative day you recover by underspending later.
+    food_remaining_today = target_daily - today_food_spend
     food_silo_after_today = food_silo + target_daily - today_food_spend
 
     food_balance = balance
@@ -922,8 +932,12 @@ def compute_metrics(month: str, today: date, target_daily: float = 350.0) -> dic
     )
 
 
-def load_dashboard(today, month=None, target_daily=350.0):
-    """Load fresh data with one shared read connection and no persistent cache."""
+def load_dashboard(today, month=None, target_daily=None):
+    """Load fresh data with one shared read connection and no persistent cache.
+
+    target_daily=None lets update_food_silo and compute_metrics each read it from
+    the settings they already load, so no extra round trip is spent resolving it.
+    """
     update_food_silo(today, target_daily)
     with dashboard_reads():
         month_now = get_current_cycle_month(today)

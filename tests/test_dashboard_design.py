@@ -19,4 +19,5 @@ def test_status_thresholds(allowance, status):
     (-1, "₹1 over today · savings go negative"),
 ])
 def test_food_caption_explains_overspending(silo, caption):
-    assert food_caption({"today_food_spend": 351, "food_silo_after_today": silo}) == caption
+    assert food_caption({"today_food_spend": 351, "food_silo_after_today": silo,
+                         "target_daily": 350}) == caption
