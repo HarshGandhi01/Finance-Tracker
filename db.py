@@ -416,6 +416,19 @@ def delete_transaction(tx_id: int):
         c.execute(text("DELETE FROM transactions WHERE id=:i"), {"i": tx_id})
 
 
+def reverse_transaction(tx_id: int) -> bool:
+    """Offset a transaction with its mirror: a refunded/failed debit gets a matching credit
+    (and vice versa). Both rows stay, nets to zero, mirrors the credit-back the parser missed."""
+    with conn() as c:
+        rows = _rows(c, "SELECT * FROM transactions WHERE id=:i", i=tx_id)
+    if not rows:
+        raise ValueError("That transaction no longer exists.")
+    tx = rows[0]
+    opposite = "credit" if tx["direction"] == "debit" else "debit"
+    return add_transaction(tx["date"], tx["merchant"], tx["amount"], direction=opposite,
+                           category=tx["category"], apply_merchant_rule=False)
+
+
 def set_peer(tx_id: int, is_peer: bool):
     with conn() as c:
         tx = _lock_transaction(c, tx_id)

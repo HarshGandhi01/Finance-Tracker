@@ -376,6 +376,18 @@ def transaction_editor(db, t, cat_options, existing_splits, rules):
                     st.rerun()
                 except ValueError as exc:
                     st.error(str(exc))
+        refund = t['direction'] == 'debit'
+        if st.button("Reverse (add refund)" if refund else "Reverse (add debit)",
+                     key=f"reverse_{t['id']}", width="stretch",
+                     help="Adds the opposite entry to cancel this out — e.g. a failed payment "
+                          "that was credited back. Both rows stay and net to zero."):
+            try:
+                db.reverse_transaction(t['id'])
+                st.session_state['notice'] = 'Refund added.' if refund else 'Reversal added.'
+                st.session_state.pop('ledger_edit', None)
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
         if t['direction'] == 'debit':
             st.divider()
             st.caption(f"Paid {inr(t['amount'], 2)} · Your share {inr(t['personal_amount'], 2)}")
