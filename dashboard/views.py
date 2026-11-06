@@ -122,6 +122,8 @@ def render_overview(db):
             f'<small class="stat-caption">{escape(caption)}</small></div>'
             f'<div class="stat-value">{escape(value)}</div></div>'
             for label, value, caption in figures) + "</div>")
+        if poker_txs:
+            poker_breakdown(poker_txs, "this month" if breakdown_month else "this cycle")
         manual_transaction_editor(db, today)
     txs = m["txs"]
     chart_col, category_col = st.columns([2, 1], gap="large")
@@ -169,6 +171,21 @@ def category_breakdown(txs, month_prefix=None):
             f'<small>{amount / total * 100:.0f}%</small></div><div class="category-track">'
             f'<span style="width:{amount / total * 100:.1f}%"></span></div>'
             for label, amount in sorted(totals.items(), key=lambda item: item[1], reverse=True)))
+
+
+def poker_breakdown(poker_txs, scope_label):
+    # Derived live from the ledger's transactions, so edits/deletes/reversals show on next rerun.
+    by_day = {}
+    for t in poker_txs:
+        by_day[t["date"]] = by_day.get(t["date"], 0) + (
+            t["amount"] if t["direction"] == "credit" else -t["amount"])
+    with st.expander(f"Poker, day by day — {scope_label}"):
+        st.html("".join(
+            f'<div class="category-line"><span>{date.fromisoformat(d):%a, %d %b}</span>'
+            f'<b style="color:{"var(--fine)" if net > 0 else "var(--cooked)" if net < 0 else "inherit"}">'
+            f'{("+" + inr(net)) if net > 0 else inr(net)}</b></div>'
+            for d, net in sorted(by_day.items(), reverse=True)))
+        st.caption("Each day's winnings minus losses, bank nights included.")
 
 
 def budget_explainer(m, days, allowance):
@@ -531,12 +548,13 @@ def ledger_row(db, t, cat_options, existing_splits, rules):
     elif t['direction'] == 'debit' and db.normalize_merchant(t['merchant']) in rules:
         detail = 'Vendor rule saved'
     with st.container(key=f"ledger_row_{t['id']}"):
-        row, edit = st.columns([20, 1], vertical_alignment='center')
+        row, edit = st.columns([5, 2], vertical_alignment='center')
         row.markdown(f'<div class="ledger-row"><div class="row-vendor">'
                      f'<span title="{escape(t["merchant"], quote=True)}">{escape(t["merchant"])}</span>'
                      f'<small>{escape(t["category"])}{(" · " + escape(detail)) if detail else ""}</small></div>'
                      f'<span class="row-amount {tone}">{sign}{inr(t["amount"], 2)}</span></div>', unsafe_allow_html=True)
-        if edit.button('', icon=':material/edit:', key=f'edit_{t["id"]}', help='Edit this transaction'):
+        if edit.button('Edit', icon=':material/edit:', key=f'edit_{t["id"]}', width='stretch',
+                       help='Edit, delete or reverse this transaction'):
             st.session_state['ledger_edit'] = (
                 None if st.session_state.get('ledger_edit') == t['id'] else t['id'])
         if st.session_state.get('ledger_edit') == t['id']:
