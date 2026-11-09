@@ -137,8 +137,11 @@ def init_db():
         for stmt in _schema():
             c.execute(text(stmt))
         _lock_setting(c, "schema_lock")
-        if "sms_hash" not in {col["name"] for col in inspect(c).get_columns("transactions")}:
+        existing_cols = {col["name"] for col in inspect(c).get_columns("transactions")}
+        if "sms_hash" not in existing_cols:
             c.execute(text("ALTER TABLE transactions ADD COLUMN sms_hash TEXT"))
+        if "from_savings" not in existing_cols:
+            c.execute(text("ALTER TABLE transactions ADD COLUMN from_savings INTEGER NOT NULL DEFAULT 0"))
         c.execute(text("CREATE INDEX IF NOT EXISTS idx_tx_sms_hash ON transactions(sms_hash, created_at)"))
         if not _rows(c, "SELECT 1 FROM settings WHERE key='categories_seeded'"):
             names = DEFAULT_CATEGORIES + [r['category'] for r in _rows(c, "SELECT DISTINCT category FROM transactions")]
@@ -253,7 +256,7 @@ def get_received_credits(today: date) -> list:
 
 def add_transaction(date_, merchant, amount, direction="debit", category="Food",
                     is_peer=False, peer_name=None, status="settled", upi_ref=None, splits=None,
-                    apply_merchant_rule=True, sms_hash=None) -> bool:
+                    apply_merchant_rule=True, sms_hash=None, from_savings=False) -> bool:
     upi_ref = (upi_ref or "").strip() or None
     try:
         with conn() as c:
@@ -270,15 +273,15 @@ def add_transaction(date_, merchant, amount, direction="debit", category="Food",
                     return False
             result = c.execute(text(
                 "INSERT INTO transactions "
-                "(date, merchant, amount, direction, category, is_peer, peer_name, status, upi_ref, created_at, sms_hash) "
-                "VALUES (:d, :m, :a, :dir, :cat, :peer, :pn, :st, :ref, :ts, :hash) RETURNING id"),
+                "(date, merchant, amount, direction, category, is_peer, peer_name, status, upi_ref, created_at, sms_hash, from_savings) "
+                "VALUES (:d, :m, :a, :dir, :cat, :peer, :pn, :st, :ref, :ts, :hash, :fs) RETURNING id"),
                 {"d": str(date_), "m": merchant.strip(), "a": float(amount), "dir": direction,
                  "cat": category, "peer": int(is_peer), "pn": peer_name, "st": status,
-                 "ref": upi_ref, "ts": _now_utc(), "hash": sms_hash})
+                 "ref": upi_ref, "ts": _now_utc(), "hash": sms_hash, "fs": int(from_savings)})
             tx_id = result.scalar_one()
             # Backdated food (late SMS, manual entry, statement import) must reach the silo.
             _correct_silo(c, date_, _food_spend(c, {'category': category, 'direction': direction,
-                          'amount': amount, 'is_peer': is_peer}, 0))
+                          'amount': amount, 'is_peer': is_peer, 'from_savings': from_savings}, 0))
             if splits:
                 _save_splits(c, tx_id, splits)
 
@@ -539,7 +542,7 @@ def set_merchant_category(merchant: str, category: str):
         _save_merchant_rule(c, [merchant], category)
 
 
-def edit_transaction(tx_id, merchant, category, remember=None):
+def edit_transaction(tx_id, merchant, category, remember=None, from_savings=None):
     """Edit a ledger row and optionally save/remove its future debit rule atomically."""
     merchant = ' '.join(merchant.split())
     if not merchant:
@@ -553,9 +556,12 @@ def edit_transaction(tx_id, merchant, category, remember=None):
             raise ValueError('A repayment cannot be pocket money.')
         if remember is not None and tx['direction'] != 'debit':
             raise ValueError('Vendor rules apply to payments, not received credits.')
-        _correct_silo(c, tx['date'], _food_spend(c, {**tx, 'category': category}) - _food_spend(c, tx))
-        c.execute(text('UPDATE transactions SET merchant=:m,category=:cat WHERE id=:i'),
-                  {'i': tx_id, 'm': merchant, 'cat': category})
+        new_fs = tx['from_savings'] if from_savings is None else int(bool(from_savings) and tx['direction'] == 'debit')
+        # Tagging a Food purchase "from savings" pulls it out of food spend, so the silo is corrected.
+        _correct_silo(c, tx['date'], _food_spend(c, {**tx, 'category': category, 'from_savings': new_fs})
+                      - _food_spend(c, tx))
+        c.execute(text('UPDATE transactions SET merchant=:m,category=:cat,from_savings=:fs WHERE id=:i'),
+                  {'i': tx_id, 'm': merchant, 'cat': category, 'fs': new_fs})
         if remember is not None:
             _save_merchant_rule(c, [tx['merchant'], merchant], category if remember else None)
 
@@ -630,7 +636,8 @@ def _put_setting(c, key, value):
 
 def _food_spend(c, tx, split_cents=None):
     """Personal Food spending of a transaction, exactly as the silo rollover counts it."""
-    if tx['category'] != 'Food' or tx['direction'] != 'debit':
+    # A "pay from savings" purchase is never daily-food spend; its draw is a read-time overlay.
+    if tx.get('from_savings') or tx['category'] != 'Food' or tx['direction'] != 'debit':
         return 0.0
     if split_cents is None:
         split_cents = _rows(c, "SELECT COALESCE(SUM(cents),0) AS n FROM expense_shares "
@@ -867,9 +874,12 @@ def compute_metrics(month: str, today: date, target_daily: float | None = None) 
     # Future-dated entries cannot contribute to spending already incurred.
     txs = [t for t in txs if t["date"] <= str(today)]
 
-    debits = sum(t["amount"] for t in txs if t["direction"] == "debit")
-    personal_debits = sum(t["personal_amount"] for t in txs if t["direction"] == "debit")
-    peer_debits = sum(t["amount"] for t in txs if t["direction"] == "debit" and t["is_peer"])
+    # "Pay from savings" purchases are funded by banked savings, so they stay out of the
+    # cycle's spending (burn/charts) and are drawn from Food savings as a read-time overlay.
+    tagged_cycle = sum(t["amount"] for t in txs if t["direction"] == "debit" and t["from_savings"])
+    debits = sum(t["amount"] for t in txs if t["direction"] == "debit" and not t["from_savings"])
+    personal_debits = sum(t["personal_amount"] for t in txs if t["direction"] == "debit" and not t["from_savings"])
+    peer_debits = sum(t["amount"] for t in txs if t["direction"] == "debit" and t["is_peer"] and not t["from_savings"])
     received = sum(t['amount'] for t in txs
                    if t['direction'] == 'credit' and t['status'] == 'settled'
                    and t['category'] != 'Pocket Money' and not t['is_repayment'])
@@ -895,7 +905,20 @@ def compute_metrics(month: str, today: date, target_daily: float | None = None) 
     }
     reserved = 0.0
     rollover = float(settings.get("rollover_balance", 0.0))
-    safe_to_spend = balance
+
+    food_silo = float(settings.get("food_silo_balance", 0.0))
+    # Food savings after big "from savings" purchases made since the last savings reset.
+    with conn() as c:
+        tagged_ever = _rows(c, "SELECT COALESCE(SUM(amount),0) AS n FROM transactions "
+                            "WHERE from_savings=1 AND direction='debit' AND date>=:s",
+                            s=settings.get("food_silo_start", ""))[0]["n"]
+    food_savings = food_silo - float(tagged_ever)
+    # Neutralise this cycle's tagged purchases in the allowance, but only up to the savings
+    # that existed before them; overdrawing savings stops the protection (verdict can't lie).
+    savings_before_cycle_tags = food_savings + tagged_cycle
+    savings_cover = min(tagged_cycle, max(savings_before_cycle_tags, 0.0))
+    spendable = balance + savings_cover
+    safe_to_spend = spendable
 
     days_remaining = days_in_cycle - elapsed_days
     if days_remaining <= 0:
@@ -904,7 +927,7 @@ def compute_metrics(month: str, today: date, target_daily: float | None = None) 
     meals_remaining = days_remaining * 2
 
     # The current cash balance already includes money carried over from earlier cycles.
-    daily_allowance = balance / days_remaining
+    daily_allowance = spendable / days_remaining
     fun_money = daily_allowance - target_daily
 
     today_str = str(today)
@@ -912,15 +935,14 @@ def compute_metrics(month: str, today: date, target_daily: float | None = None) 
                            if str(t["date"]).startswith(today_str)
                            and t["category"] == "Food"
                            and t["direction"] == "debit"
+                           and not t["from_savings"]
                            and (not t["is_peer"] or t['personal_amount'] != t['amount']))
-
-    food_silo = float(settings.get("food_silo_balance", 0.0))
 
     # Today's overspend is settled into the silo tomorrow by update_food_silo.
     # Reading metrics must never deduct it again on every Streamlit rerun.
     # Not floored: overspending shows as a negative day you recover by underspending later.
     food_remaining_today = target_daily - today_food_spend
-    food_silo_after_today = food_silo + target_daily - today_food_spend
+    food_silo_after_today = food_savings + target_daily - today_food_spend
 
     food_balance = balance
     safe_per_meal = daily_allowance / 2
@@ -940,7 +962,7 @@ def compute_metrics(month: str, today: date, target_daily: float | None = None) 
         days_elapsed=days_elapsed, days_until_broke=days_until_broke,
         safe_per_meal=safe_per_meal, daily_avg=daily_avg, target_daily=target_daily, txs=txs,
         safe_to_spend=safe_to_spend, daily_allowance=daily_allowance, fun_money=fun_money, rollover=rollover,
-        today_food_spend=today_food_spend, food_rollover=food_silo,
+        today_food_spend=today_food_spend, food_rollover=food_savings,
         food_silo_after_today=food_silo_after_today, food_remaining_today=food_remaining_today
     )
 

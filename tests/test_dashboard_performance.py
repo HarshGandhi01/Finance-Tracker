@@ -40,7 +40,7 @@ class DashboardPerformanceTests(unittest.TestCase):
     def test_refresh_has_bounded_round_trips_and_reads_fresh_data(self):
         first = db.load_dashboard(self.today)
         self.assertEqual(len(self.begins), 2)
-        self.assertLessEqual(len(self.queries), 13)
+        self.assertLessEqual(len(self.queries), 14)
         self.assertEqual(first['metrics']['balance'], 13000)
         db.add_transaction(self.today, 'Imported lunch', 300)
         second = db.load_dashboard(self.today)

@@ -126,11 +126,13 @@ def render_overview(db):
             poker_breakdown(poker_txs, "this month" if breakdown_month else "this cycle")
         manual_transaction_editor(db, today)
     txs = m["txs"]
+    # "From savings" purchases are funded by banked savings, not this cycle's budget.
+    spending_txs = [t for t in txs if not t["from_savings"]]
     chart_col, category_col = st.columns([2, 1], gap="large")
     with chart_col:
-        spending_chart(txs, m, plan_end if current else m["cycle_end"], today)
+        spending_chart(spending_txs, m, plan_end if current else m["cycle_end"], today)
     with category_col:
-        category_breakdown(txs, breakdown_month)
+        category_breakdown(spending_txs, breakdown_month)
     shares_by_tx = {}
     for share in snapshot["shares"]:
         shares_by_tx.setdefault(share["transaction_id"], []).append(share)
@@ -374,11 +376,17 @@ def transaction_editor(db, t, cat_options, existing_splits, rules):
             st.caption(f"Saved default: {rule}. Uncheck to remove it." if rule else "Matches this vendor name, ignoring case and extra spaces.")
             if remember_checked or rule:
                 remember = remember_checked
+        from_savings = None
+        if t['direction'] == 'debit':
+            from_savings = st.checkbox("Pay from savings", value=bool(t['from_savings']),
+                                       key=f"fromsav_{t['id']}",
+                                       help="A big one-off funded by your Food savings: kept out of your "
+                                            "daily budget and spending charts, and drawn from savings.")
         col_save, col_del = st.columns([2, 1])
         with col_save:
             if st.button("Save changes", key=f"save_{t['id']}", type="primary", width="stretch"):
                 try:
-                    db.edit_transaction(t['id'], merchant, new_cat, remember)
+                    db.edit_transaction(t['id'], merchant, new_cat, remember, from_savings)
                     st.session_state['notice'] = 'Transaction updated. Vendor rule saved.' if remember else 'Transaction updated.'
                     st.session_state.pop('ledger_edit', None)
                     st.rerun()
@@ -442,12 +450,15 @@ def manual_transaction_editor(db, today):
         m_cat = st.selectbox("Category", options=db.get_categories(), index=db.get_categories().index(default_cat))
         # Vendor rules only ever apply to payments, so don't offer one for received money.
         auto_tag = m_dir == "debit" and st.checkbox("Use this category for future payments here")
+        m_from_savings = m_dir == "debit" and st.checkbox(
+            "Pay from savings", help="A big one-off funded by your Food savings: kept out of your "
+                                     "daily budget and spending charts, and drawn from savings.")
 
         manual_splits = split_fields(db, m_amount, 'manual') if m_dir == 'debit' else []
         if st.button("Log transaction", width="stretch", disabled=manual_splits is None):
             if m_merchant and m_amount > 0:
                 try:
-                    if db.add_transaction(m_date, m_merchant, m_amount, direction=m_dir, category=m_cat, splits=manual_splits, apply_merchant_rule=False):
+                    if db.add_transaction(m_date, m_merchant, m_amount, direction=m_dir, category=m_cat, splits=manual_splits, apply_merchant_rule=False, from_savings=bool(m_from_savings)):
                         if auto_tag:
                             db.set_merchant_category(m_merchant, m_cat)
                         st.session_state["notice"] = "Transaction added."
@@ -541,7 +552,9 @@ def ledger_row(db, t, cat_options, existing_splits, rules):
     sign = '+' if t['direction'] == 'credit' else '−'
     tone = 'credit' if t['direction'] == 'credit' else 'debit'
     detail = ''
-    if t['personal_amount'] != t['amount']:
+    if t['from_savings']:
+        detail = 'From savings'
+    elif t['personal_amount'] != t['amount']:
         detail = f"Your share {inr(t['personal_amount'], 2)}"
     elif t['is_repayment']:
         detail = 'Split repayment'
