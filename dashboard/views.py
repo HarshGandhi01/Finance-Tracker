@@ -128,9 +128,17 @@ def render_overview(db):
     txs = m["txs"]
     # "From savings" purchases are funded by banked savings, not this cycle's budget.
     spending_txs = [t for t in txs if not t["from_savings"]]
+    options = snapshot["month_options"]  # newest first; the next entry is the previous cycle
+    prev_idx = (options.index(month) + 1) if month in options else len(options)
+    prev_month = options[prev_idx] if prev_idx < len(options) else None
+    prev_txs, prev_start, prev_end = None, None, None
+    if prev_month:
+        prev_txs = [t for t in db.get_transactions(prev_month) if not t["from_savings"]]
+        prev_start, prev_end = db.get_cycle_dates(prev_month)
     chart_col, category_col = st.columns([2, 1], gap="large")
     with chart_col:
-        spending_chart(spending_txs, m, plan_end if current else m["cycle_end"], today)
+        spending_chart(spending_txs, m, plan_end if current else m["cycle_end"], today,
+                       prev_txs, prev_start, prev_end, show_insight=current)
     with category_col:
         category_breakdown(spending_txs, breakdown_month)
     shares_by_tx = {}
@@ -144,13 +152,22 @@ def render_overview(db):
         budget_explainer(m, days, allowance)
 
 
-def spending_chart(txs, m, chart_end, today):
+def spending_chart(txs, m, chart_end, today, prev_txs=None, prev_start=None, prev_end=None,
+                   show_insight=True):
     st.subheader("Spending this cycle")
     if txs:
-        st.caption("Money back and refunds are subtracted. The dotted line continues your current pace.")
-        fig = burn_rate_line(pd.DataFrame(txs), TARGET_DAILY, m["cycle_start"], chart_end, today,
-                             balance=m["balance"])
+        note = "Money back and refunds are subtracted. The dotted line continues your current pace."
+        if prev_txs:
+            note += " The faint line is last cycle, for comparison."
+        st.caption(note)
+        fig = burn_rate_line(pd.DataFrame(txs), m["target_daily"], m["cycle_start"], chart_end, today,
+                             balance=m["balance"],
+                             prev_txs=pd.DataFrame(prev_txs) if prev_txs else None,
+                             prev_start=prev_start, prev_end=prev_end)
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        if show_insight and m.get("days_until_broke") is not None:
+            broke = today + timedelta(days=int(m["days_until_broke"]))
+            st.caption(f"At this pace, your balance runs out around **{broke:%d %b}**.")
     else:
         st.caption("Your spending line appears after your first payment.")
 
