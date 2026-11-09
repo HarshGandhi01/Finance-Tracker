@@ -101,6 +101,12 @@ h2::after, h3::after { content: ""; display: block; width: 40px; height: 2px; ma
   padding: 0 .4rem; transition: background .16s ease, border-color .16s ease; }
 [class*="st-key-ledger_row_"]:hover { background: color-mix(in srgb, var(--accent) 7%, transparent);
   border-left-color: var(--accent); }
+/* Compact ghost Edit button, pinned right so rows stay calm and aligned. */
+[class*="st-key-ledger_row_"] .stButton { display: flex; justify-content: flex-end; }
+[class*="st-key-ledger_row_"] .stButton > button {
+  padding: .25rem .65rem; min-height: 0; font-size: .82rem; font-weight: 500;
+  color: var(--muted); border-color: var(--line); background: transparent; }
+[class*="st-key-ledger_row_"] .stButton > button:hover { color: var(--ink); }
 
 /* ---------- Buttons ---------- */
 .stButton > button { transition: box-shadow .18s ease, border-color .18s ease, transform .1s ease; }

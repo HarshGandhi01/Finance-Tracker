@@ -370,28 +370,29 @@ def transaction_editor(db, t, cat_options, existing_splits, rules):
         new_cat = st.selectbox("Category", options=cat_options,
                               index=cat_options.index(t['category']), key=f"cat_{t['id']}")
         remember = None
-        if t['direction'] == 'debit':
-            rule = rules.get(db.normalize_merchant(t['merchant']))
-            remember_checked = st.checkbox("Use for future payments to this vendor", value=bool(rule), key=f"remember_{t['id']}")
-            st.caption(f"Saved default: {rule}. Uncheck to remove it." if rule else "Matches this vendor name, ignoring case and extra spaces.")
-            if remember_checked or rule:
-                remember = remember_checked
         from_savings = None
         if t['direction'] == 'debit':
-            from_savings = st.checkbox("Pay from savings", value=bool(t['from_savings']),
+            rule = rules.get(db.normalize_merchant(t['merchant']))
+            remember_checked = st.checkbox("Use for future payments to this vendor",
+                                           value=bool(rule), key=f"remember_{t['id']}")
+            st.caption(f"Saved default: {rule}. Uncheck to remove it." if rule
+                       else "Matches this vendor name, ignoring case and extra spaces.")
+            if remember_checked or rule:
+                remember = remember_checked
+            from_savings = st.checkbox("Pay from savings (big one-off)", value=bool(t['from_savings']),
                                        key=f"fromsav_{t['id']}",
-                                       help="A big one-off funded by your Food savings: kept out of your "
-                                            "daily budget and spending charts, and drawn from savings.")
-        col_save, col_del = st.columns([2, 1])
-        with col_save:
-            if st.button("Save changes", key=f"save_{t['id']}", type="primary", width="stretch"):
-                try:
-                    db.edit_transaction(t['id'], merchant, new_cat, remember, from_savings)
-                    st.session_state['notice'] = 'Transaction updated. Vendor rule saved.' if remember else 'Transaction updated.'
-                    st.session_state.pop('ledger_edit', None)
-                    st.rerun()
-                except ValueError as exc:
-                    st.error(str(exc))
+                                       help="Funded by your Food savings: kept out of your daily "
+                                            "budget and spending charts, and drawn from savings.")
+        if st.button("Save changes", key=f"save_{t['id']}", type="primary", width="stretch"):
+            try:
+                db.edit_transaction(t['id'], merchant, new_cat, remember, from_savings)
+                st.session_state['notice'] = 'Transaction updated. Vendor rule saved.' if remember else 'Transaction updated.'
+                st.session_state.pop('ledger_edit', None)
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+        refund = t['direction'] == 'debit'
+        col_del, col_rev = st.columns(2)
         with col_del:
             if st.button("Delete", key=f"del_{t['id']}", width="stretch"):
                 try:
@@ -401,18 +402,18 @@ def transaction_editor(db, t, cat_options, existing_splits, rules):
                     st.rerun()
                 except ValueError as exc:
                     st.error(str(exc))
-        refund = t['direction'] == 'debit'
-        if st.button("Reverse (add refund)" if refund else "Reverse (add debit)",
-                     key=f"reverse_{t['id']}", width="stretch",
-                     help="Adds the opposite entry to cancel this out — e.g. a failed payment "
-                          "that was credited back. Both rows stay and net to zero."):
-            try:
-                db.reverse_transaction(t['id'])
-                st.session_state['notice'] = 'Refund added.' if refund else 'Reversal added.'
-                st.session_state.pop('ledger_edit', None)
-                st.rerun()
-            except ValueError as exc:
-                st.error(str(exc))
+        with col_rev:
+            if st.button("Reverse (refund)" if refund else "Reverse",
+                         key=f"reverse_{t['id']}", width="stretch",
+                         help="Adds the opposite entry to cancel this out — e.g. a failed payment "
+                              "credited back. Both rows stay and net to zero."):
+                try:
+                    db.reverse_transaction(t['id'])
+                    st.session_state['notice'] = 'Refund added.' if refund else 'Reversal added.'
+                    st.session_state.pop('ledger_edit', None)
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
         if t['direction'] == 'debit':
             st.divider()
             st.caption(f"Paid {inr(t['amount'], 2)} · Your share {inr(t['personal_amount'], 2)}")
@@ -451,8 +452,9 @@ def manual_transaction_editor(db, today):
         # Vendor rules only ever apply to payments, so don't offer one for received money.
         auto_tag = m_dir == "debit" and st.checkbox("Use this category for future payments here")
         m_from_savings = m_dir == "debit" and st.checkbox(
-            "Pay from savings", help="A big one-off funded by your Food savings: kept out of your "
-                                     "daily budget and spending charts, and drawn from savings.")
+            "Pay from savings (big one-off)",
+            help="Funded by your Food savings: kept out of your daily budget and spending charts, "
+                 "and drawn from savings.")
 
         manual_splits = split_fields(db, m_amount, 'manual') if m_dir == 'debit' else []
         if st.button("Log transaction", width="stretch", disabled=manual_splits is None):
@@ -561,12 +563,12 @@ def ledger_row(db, t, cat_options, existing_splits, rules):
     elif t['direction'] == 'debit' and db.normalize_merchant(t['merchant']) in rules:
         detail = 'Vendor rule saved'
     with st.container(key=f"ledger_row_{t['id']}"):
-        row, edit = st.columns([5, 2], vertical_alignment='center')
+        row, edit = st.columns([9, 1.3], vertical_alignment='center')
         row.markdown(f'<div class="ledger-row"><div class="row-vendor">'
                      f'<span title="{escape(t["merchant"], quote=True)}">{escape(t["merchant"])}</span>'
                      f'<small>{escape(t["category"])}{(" · " + escape(detail)) if detail else ""}</small></div>'
                      f'<span class="row-amount {tone}">{sign}{inr(t["amount"], 2)}</span></div>', unsafe_allow_html=True)
-        if edit.button('Edit', icon=':material/edit:', key=f'edit_{t["id"]}', width='stretch',
+        if edit.button('Edit', icon=':material/edit:', key=f'edit_{t["id"]}',
                        help='Edit, delete or reverse this transaction'):
             st.session_state['ledger_edit'] = (
                 None if st.session_state.get('ledger_edit') == t['id'] else t['id'])
