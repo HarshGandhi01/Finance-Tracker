@@ -168,7 +168,7 @@ def spending_chart(txs, m, chart_end, today, prev_txs=None, prev_start=None, pre
                              prev_txs=pd.DataFrame(prev_txs) if prev_txs else None,
                              prev_start=prev_start, prev_end=prev_end)
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-        if show_insight and m.get("days_until_broke") is not None:
+        if show_insight and m["balance"] > 0 and m.get("days_until_broke") is not None:
             broke = today + timedelta(days=int(m["days_until_broke"]))
             st.caption(f"At this pace, your balance runs out around **{broke:%d %b}**.")
     else:
@@ -249,10 +249,11 @@ def budget_culprits(spending_txs, safe_to_spend, days, allowance, target, month_
         for t in debits[:rows]:
             owed = (f" · {inr(t['amount'] - t['personal_amount'])} owed back"
                     if t["personal_amount"] != t["amount"] else "")
-            st.html('<div class="category-line">'
-                    f'<span>{escape(t["merchant"])}'
-                    f'<small style="display:block;color:var(--muted)">{escape(t["category"])}{owed}</small>'
-                    f'</span><b>{inr(t["amount"])}</b><small>{inr(t["amount"] / days)}/day</small></div>')
+            st.html('<div class="culprit"><div class="culprit-main">'
+                    f'<span>{escape(t["merchant"])}</span>'
+                    f'<small>{escape(t["category"])}{owed}</small></div>'
+                    f'<div class="culprit-right"><b>{inr(t["amount"])}</b>'
+                    f'<small>{inr(t["amount"] / days)}/day</small></div></div>')
 
 
 def budget_explainer(m, days, allowance):

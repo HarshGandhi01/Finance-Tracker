@@ -87,6 +87,17 @@ h2::after, h3::after { content: ""; display: block; width: 40px; height: 2px; ma
   animation: grow-x .7s cubic-bezier(.2,.8,.2,1) both; }
 @keyframes grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
+/* ---------- Budget culprits: what cut the budget ---------- */
+.culprit { display: flex; justify-content: space-between; align-items: baseline;
+           gap: .9rem; margin-top: .75rem; }
+.culprit-main { min-width: 0; }
+.culprit-main > span { font-size: .92rem; overflow: hidden; text-overflow: ellipsis;
+                       white-space: nowrap; display: block; }
+.culprit-main small { display: block; color: var(--muted); font-size: .74rem; line-height: 1.4; }
+.culprit-right { text-align: right; white-space: nowrap; }
+.culprit-right b { font-weight: 600; font-size: .92rem; }
+.culprit-right small { display: block; color: var(--muted); font-size: .72rem; }
+
 /* ---------- Ledger ---------- */
 .day-label { color: var(--muted); font-size: .82rem; margin: 1.1rem 0 .1rem; }
 .ledger-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; align-items: center; min-height: 48px; }
