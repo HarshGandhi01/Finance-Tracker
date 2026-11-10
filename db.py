@@ -143,6 +143,8 @@ def init_db():
         if "from_savings" not in existing_cols:
             c.execute(text("ALTER TABLE transactions ADD COLUMN from_savings INTEGER NOT NULL DEFAULT 0"))
         c.execute(text("CREATE INDEX IF NOT EXISTS idx_tx_sms_hash ON transactions(sms_hash, created_at)"))
+        if "forgiven" not in {col["name"] for col in inspect(c).get_columns("expense_shares")}:
+            c.execute(text("ALTER TABLE expense_shares ADD COLUMN forgiven INTEGER NOT NULL DEFAULT 0"))
         if not _rows(c, "SELECT 1 FROM settings WHERE key='categories_seeded'"):
             names = DEFAULT_CATEGORIES + [r['category'] for r in _rows(c, "SELECT DISTINCT category FROM transactions")]
             for order, name in enumerate(names):
@@ -349,6 +351,13 @@ def get_splits(tx_id=None):
                         "JOIN transactions t ON t.id=s.transaction_id "
                         + ("WHERE s.transaction_id=:i " if tx_id is not None else "") +
                         "ORDER BY t.date,s.id", i=tx_id)
+
+
+def forgive_all_owed():
+    """Stop tracking every split as owed. Leaves balance, income, and spending untouched —
+    the shares stay (so your personal share is unchanged); they just no longer count as owed."""
+    with conn() as c:
+        c.execute(text("UPDATE expense_shares SET forgiven=1 WHERE forgiven=0"))
 
 
 def record_repayment(share_id, received_on, amount=None, credit_id=None):

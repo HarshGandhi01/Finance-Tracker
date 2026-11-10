@@ -98,7 +98,7 @@ def render_overview(db):
                     '<p class="past-cycle">Enter your bank balance to find out.</p>')
             st.page_link("settings.py", label="Set balance", icon=":material/account_balance:")
     outstanding = sum(max(s["cents"] / 100 - s["repaid"], 0)
-                      for s in snapshot["shares"] if s["date"] <= str(today))
+                      for s in snapshot["shares"] if s["date"] <= str(today) and not s["forgiven"])
     breakdown_month = str(today)[:7] if current else None
     # Net = cash in (credits) − cash out (debits). Poker cash is never split, so payouts
     # count in full; as the bank a losing night shows because payouts exceed buy-ins collected.
@@ -150,7 +150,8 @@ def render_overview(db):
     with side_col:
         repayment_editor(db, snapshot["shares"], snapshot["credits"], today)
         if current:
-            budget_culprits(spending_txs, m["safe_to_spend"], days, allowance, m["target_daily"])
+            budget_culprits(spending_txs, m["safe_to_spend"], days, allowance, m["target_daily"],
+                            breakdown_month)
         budget_explainer(m, days, allowance)
 
 
@@ -219,27 +220,33 @@ def debits_to_reach(amounts, safe_to_spend, days, threshold):
     return None
 
 
-def budget_culprits(spending_txs, safe_to_spend, days, allowance, target):
-    """The payments that cut your daily budget the most, and what reversing them would recover."""
+def budget_culprits(spending_txs, safe_to_spend, days, allowance, target, month_prefix=None):
+    """The payments that cut your daily budget the most, and what recovering them would restore."""
+    if month_prefix:
+        spending_txs = [t for t in spending_txs if t["date"][:7] == month_prefix]
     debits = sorted((t for t in spending_txs if t["direction"] == "debit" and t["amount"] > 0),
                     key=lambda t: t["amount"], reverse=True)
     if not debits:
         return
     status = budget_status(allowance, target)
     amounts = [t["amount"] for t in debits]
+    rows = 6
 
     with st.expander("What's cutting your budget", expanded=status == "Cooked"):
-        if allowance >= target * 1.25:
+        if status == "Comfortable":
             st.caption("You're comfortable — these simply cost the most this cycle.")
         else:
-            goal_name = "Comfortable" if allowance >= target else "Tight"
-            goal = debits_to_reach(amounts, safe_to_spend, days, target * 1.25 if allowance >= target else target)
+            # Cooked aims for Tight, Tight aims for Comfortable; name the band actually reached.
+            goal = debits_to_reach(amounts, safe_to_spend, days, target * 1.25 if status == "Tight" else target)
             if goal:
                 k, total = goal
-                st.caption(f"Reversing the top {k} ({inr(total)}) would lift you back to {goal_name}.")
+                rows = max(rows, k)  # never cite more reversals than rows shown below
+                band = budget_status((safe_to_spend + total) / days, target)
+                st.caption(f"Recovering the top {k} ({inr(total)}) — a refund, or collecting what's "
+                           f"owed — would lift you to {band}.")
             else:
                 st.caption("These cut your budget the most this cycle.")
-        for t in debits[:6]:
+        for t in debits[:rows]:
             owed = (f" · {inr(t['amount'] - t['personal_amount'])} owed back"
                     if t["personal_amount"] != t["amount"] else "")
             st.html('<div class="category-line">'
@@ -534,11 +541,20 @@ def manual_transaction_editor(db, today):
 @st.fragment
 def repayment_editor(db, shares, received_credits, today):
     with st.expander("Money owed to me", expanded=False):
-        outstanding = [s for s in shares if s['date'] <= str(today) and s['cents'] - round(s['repaid'] * 100) > 0]
+        outstanding = [s for s in shares if s['date'] <= str(today) and not s['forgiven']
+                       and s['cents'] - round(s['repaid'] * 100) > 0]
         st.metric("Outstanding across all cycles", inr(sum(s['cents'] / 100 - s['repaid'] for s in outstanding), 2))
         st.caption("Link repayments already in your records to avoid adding the money twice.")
         if not outstanding:
             st.caption("Nobody owes you anything. Split a payment from its edit menu to track it here.")
+        else:
+            with st.popover("Reset owed to ₹0"):
+                st.caption("Stops tracking everything currently owed. Your balance, income, and spending "
+                           "don't change — this just clears the list.")
+                if st.button("Clear everything owed", type="primary", key="forgive_all"):
+                    db.forgive_all_owed()
+                    st.session_state["notice"] = "Cleared — nobody is marked as owing you now."
+                    st.rerun()
         for s in outstanding:
             remaining = (s['cents'] - round(s['repaid'] * 100)) / 100
             with st.expander(f"{s['person']} · {inr(remaining, 2)} owed · {s['merchant']} · {s['date']}"):
