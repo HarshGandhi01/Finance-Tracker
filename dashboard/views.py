@@ -149,6 +149,8 @@ def render_overview(db):
         transaction_list(db, txs, shares_by_tx, month, snapshot["merchant_categories"])
     with side_col:
         repayment_editor(db, snapshot["shares"], snapshot["credits"], today)
+        if current:
+            budget_culprits(spending_txs, m["safe_to_spend"], days, allowance, m["target_daily"])
         budget_explainer(m, days, allowance)
 
 
@@ -205,6 +207,45 @@ def poker_breakdown(poker_txs, scope_label):
             f'{("+" + inr(net)) if net > 0 else inr(net)}</b></div>'
             for d, net in sorted(by_day.items(), reverse=True)))
         st.caption("Each day's winnings minus losses, bank nights included.")
+
+
+def debits_to_reach(amounts, safe_to_spend, days, threshold):
+    """Fewest of the largest debits whose reversal lifts allowance to threshold; (count, total) or None."""
+    total = 0.0
+    for i, a in enumerate(sorted(amounts, reverse=True), 1):
+        total += a
+        if (safe_to_spend + total) / days >= threshold:
+            return i, total
+    return None
+
+
+def budget_culprits(spending_txs, safe_to_spend, days, allowance, target):
+    """The payments that cut your daily budget the most, and what reversing them would recover."""
+    debits = sorted((t for t in spending_txs if t["direction"] == "debit" and t["amount"] > 0),
+                    key=lambda t: t["amount"], reverse=True)
+    if not debits:
+        return
+    status = budget_status(allowance, target)
+    amounts = [t["amount"] for t in debits]
+
+    with st.expander("What's cutting your budget", expanded=status == "Cooked"):
+        if allowance >= target * 1.25:
+            st.caption("You're comfortable — these simply cost the most this cycle.")
+        else:
+            goal_name = "Comfortable" if allowance >= target else "Tight"
+            goal = debits_to_reach(amounts, safe_to_spend, days, target * 1.25 if allowance >= target else target)
+            if goal:
+                k, total = goal
+                st.caption(f"Reversing the top {k} ({inr(total)}) would lift you back to {goal_name}.")
+            else:
+                st.caption("These cut your budget the most this cycle.")
+        for t in debits[:6]:
+            owed = (f" · {inr(t['amount'] - t['personal_amount'])} owed back"
+                    if t["personal_amount"] != t["amount"] else "")
+            st.html('<div class="category-line">'
+                    f'<span>{escape(t["merchant"])}'
+                    f'<small style="display:block;color:var(--muted)">{escape(t["category"])}{owed}</small>'
+                    f'</span><b>{inr(t["amount"])}</b><small>{inr(t["amount"] / days)}/day</small></div>')
 
 
 def budget_explainer(m, days, allowance):
