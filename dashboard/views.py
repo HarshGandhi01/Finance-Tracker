@@ -1,6 +1,7 @@
 """Dashboard pages and shared editors."""
 from datetime import date, timedelta
 from html import escape
+from math import ceil
 import pandas as pd
 import streamlit as st
 from theme import inr, burn_rate_line, next_25th
@@ -61,6 +62,11 @@ def render_overview(db):
     current = snapshot["month"] == snapshot["month_now"]
     if "notice" in st.session_state:
         st.toast(st.session_state.pop("notice"))
+    if snapshot["unparsed"]:
+        n = len(snapshot["unparsed"])
+        st.page_link("settings.py", icon=":material/sms_failed:",
+                     label=f"{n} bank text{'s' if n > 1 else ''} couldn't be read — "
+                           f"add {'them' if n > 1 else 'it'} on Settings")
     # Wide screens: answer on the left, figures on the right. Streamlit stacks these on phones.
     top_left, top_right = st.columns([1.15, 1], gap="large", vertical_alignment="center")
     hero = top_left.empty()
@@ -152,6 +158,7 @@ def render_overview(db):
         if current:
             budget_culprits(spending_txs, m["safe_to_spend"], days, allowance, m["target_daily"],
                             breakdown_month)
+            big_payment_planner(m, today)
         budget_explainer(m, days, allowance)
 
 
@@ -254,6 +261,46 @@ def budget_culprits(spending_txs, safe_to_spend, days, allowance, target, month_
                     f'<small>{escape(t["category"])}{owed}</small></div>'
                     f'<div class="culprit-right"><b>{inr(t["amount"])}</b>'
                     f'<small>{inr(t["amount"] / days)}/day</small></div></div>')
+
+
+def days_to_save(amount, savings, rate):
+    """Days of saving at rate/day to bank `amount`: 0 if already covered, None if not saving."""
+    if savings >= amount:
+        return 0
+    if rate <= 0:
+        return None
+    return ceil((amount - savings) / rate)
+
+
+def big_payment_planner(m, today):
+    """Given a big one-off, suggest when you'll have banked enough savings to cover it."""
+    with st.expander("Plan a big payment"):
+        st.caption("A big one-off coming up? See when your savings will cover it.")
+        amount = st.number_input("Payment amount (₹)", min_value=0.0, step=500.0, key="big_pay")
+        if amount <= 0:
+            return
+        savings, target = m["food_rollover"], m["target_daily"]
+        food_spent = sum(t["personal_amount"] for t in m["txs"]
+                         if t["direction"] == "debit" and t["category"] == "Food"
+                         and not t["from_savings"] and (not t["is_peer"] or t["personal_amount"] != t["amount"]))
+        avg_food = food_spent / max(m["days_elapsed"], 1)
+        rate = target - avg_food  # ₹ banked per day at your recent food pace
+        days_needed = days_to_save(amount, savings, rate)
+        if days_needed == 0:
+            st.success(f"You can cover this from savings now — {inr(savings)} is banked. "
+                       "Log it and tick “Pay from savings” so it won't dent your daily budget.")
+        elif days_needed is None:
+            st.warning(f"You're not banking savings right now — averaging {inr(avg_food)}/day on food, "
+                       f"over your {inr(target)} budget. Eat under {inr(target)}/day to start building toward it.")
+        elif days_needed > 365:
+            st.info(f"At ~{inr(rate)}/day saved, this is over a year out. You'd reach it faster by "
+                    "eating under budget, or just pay it from your balance.")
+        else:
+            pay_date = today + timedelta(days=days_needed)
+            st.info(f"You bank about **{inr(rate)}/day** at your recent food pace. You'll have "
+                    f"{inr(amount)} saved by **{pay_date:%d %b}** — a good time to pay.")
+            st.caption(f"That's {days_needed} more day{'s' if days_needed != 1 else ''} under "
+                       f"{inr(target)}/day on food. Then tag it “Pay from savings”.")
 
 
 def budget_explainer(m, days, allowance):
@@ -504,17 +551,20 @@ def manual_transaction_editor(db, today):
         m_date = st.date_input("Transaction date", value=today, max_value=today)
         m_merchant = st.text_input("Merchant", placeholder="Who you paid, or who paid you")
 
-        # Auto-tagging logic
-        default_cat = db.get_categories()[0]
+        # Default to your last-used category; a saved vendor rule still wins when the merchant matches.
+        cats = db.get_categories()
+        default_cat = st.session_state.get("last_manual_cat", cats[0])
+        if default_cat not in cats:
+            default_cat = cats[0]
         if m_merchant:
             mapped_cat = db.get_merchant_category(m_merchant)
-            if mapped_cat and mapped_cat in db.get_categories():
+            if mapped_cat and mapped_cat in cats:
                 default_cat = mapped_cat
 
         m_amount = st.number_input("Amount (₹)", min_value=0.0, step=10.0)
         m_dir = st.radio("Type", ["debit", "credit"], horizontal=True,
                          format_func={"debit": "I paid", "credit": "I received"}.get)
-        m_cat = st.selectbox("Category", options=db.get_categories(), index=db.get_categories().index(default_cat))
+        m_cat = st.selectbox("Category", options=cats, index=cats.index(default_cat))
         # Vendor rules only ever apply to payments, so don't offer one for received money.
         auto_tag = m_dir == "debit" and st.checkbox("Use this category for future payments here")
         m_from_savings = m_dir == "debit" and st.checkbox(
@@ -529,6 +579,7 @@ def manual_transaction_editor(db, today):
                     if db.add_transaction(m_date, m_merchant, m_amount, direction=m_dir, category=m_cat, splits=manual_splits, apply_merchant_rule=False, from_savings=bool(m_from_savings)):
                         if auto_tag:
                             db.set_merchant_category(m_merchant, m_cat)
+                        st.session_state["last_manual_cat"] = m_cat
                         st.session_state["notice"] = "Transaction added."
                         st.rerun()
                     else:
@@ -595,12 +646,15 @@ def transaction_list(db, txs, shares_by_tx, month, rules):
         with title:
             st.subheader('Transactions')
         with search:
-            query = st.text_input('Search vendor or person', placeholder='Search', label_visibility='collapsed', key='ledger_search')
+            query = st.text_input('Search vendor, person or amount', placeholder='Search',
+                                   label_visibility='collapsed', key='ledger_search')
         base_cats = list(db.get_categories())  # one DB read, not two per rerun
         cat_options = base_cats + sorted({t['category'] for t in txs if t['category'] not in base_cats})
         with category:
             selected = st.selectbox('Filter by category', ['All categories'] + cat_options, label_visibility='collapsed', key='ledger_category')
-        matches = [t for t in txs if query.casefold().strip() in t['merchant'].casefold()
+        q = query.casefold().strip()
+        matches = [t for t in txs
+                   if (q in t['merchant'].casefold() or q in f"{t['amount']:.2f}" or q in f"{t['amount']:.0f}")
                    and (selected == 'All categories' or t['category'] == selected)]
         sorted_txs = sorted(matches, key=lambda t: (t['date'], t['id']), reverse=True)
         if not sorted_txs:
