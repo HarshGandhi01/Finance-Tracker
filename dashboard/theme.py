@@ -6,11 +6,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 
-# Neon Ledger: dark-only. Heat runs mint -> amber -> hot pink; violet/cyan carry the brand.
+# Clean restrained dark, dark-only. One violet accent used sparingly; solid, legible semantic
+# colors for the verdict (emerald -> amber -> rose). accent2 is a calm cyan for chart data only.
 PALETTE = {
-    "dark": dict(ink="#F2F0FF", muted="#8B86A8", line="rgba(242,240,255,.12)",
-                 fine="#2EE6A6", tight="#FFC23C", cooked="#FF3D7F",
-                 accent="#7C5CFF", accent2="#35E7FF", bg="#0B0A14", surface="#15131F"),
+    "dark": dict(ink="#F3F4F6", muted="#9BA1AC", line="rgba(255,255,255,.09)",
+                 fine="#34D399", tight="#F5B544", cooked="#FB5E73",
+                 accent="#7C5CFF", accent2="#5AC8E0", bg="#0C0D12", surface="#16181F"),
 }
 PALETTE["light"] = PALETTE["dark"]  # dark-only: never switch to a light palette
 
@@ -89,14 +90,14 @@ def burn_rate_line(txs, target_daily, cycle_start, cycle_end, today, balance=Non
         if n:
             fig.add_trace(go.Scatter(
                 x=full_dates[:n], y=prev_cum[:n], mode='lines', name='Last cycle',
-                line=dict(color='rgba(53,231,255,0.55)', width=1.75),
+                line=dict(color='rgba(90,200,224,0.5)', width=1.5),
                 hovertemplate="Last cycle: ₹%{y:,.0f}<extra></extra>"))
 
-    # This cycle's actual spend — violet with a soft neon fill down to zero.
+    # This cycle's actual spend — violet with a quiet fill down to zero.
     fig.add_trace(go.Scatter(
         x=dates, y=cumulative, mode='lines', name='This cycle',
-        line=dict(color=accent, width=2.75, shape='hv'),
-        fill='tozeroy', fillcolor='rgba(124,92,255,0.12)',
+        line=dict(color=accent, width=2.5, shape='hv'),
+        fill='tozeroy', fillcolor='rgba(124,92,255,0.08)',
         hovertemplate="Net spend: ₹%{y:,.0f}<extra></extra>"))
 
     if balance is not None and today < cycle_end and today >= cycle_start:

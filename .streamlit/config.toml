@@ -3,19 +3,19 @@ base = "dark"
 font = "'Schibsted Grotesk':https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400..900&display=swap"
 baseRadius = "small"
 primaryColor = "#7C5CFF"
-backgroundColor = "#0B0A14"
-secondaryBackgroundColor = "#15131F"
-textColor = "#F2F0FF"
+backgroundColor = "#0C0D12"
+secondaryBackgroundColor = "#16181F"
+textColor = "#F3F4F6"
 
-# Neon Ledger is dark-only: light mirrors dark so the app stays dark regardless of system preference.
+# Dark-only: light mirrors dark so the app stays dark regardless of system preference.
 [theme.light]
 primaryColor = "#7C5CFF"
-backgroundColor = "#0B0A14"
-secondaryBackgroundColor = "#15131F"
-textColor = "#F2F0FF"
+backgroundColor = "#0C0D12"
+secondaryBackgroundColor = "#16181F"
+textColor = "#F3F4F6"
 
 [theme.dark]
 primaryColor = "#7C5CFF"
-backgroundColor = "#0B0A14"
-secondaryBackgroundColor = "#15131F"
-textColor = "#F2F0FF"
+backgroundColor = "#0C0D12"
+secondaryBackgroundColor = "#16181F"
+textColor = "#F3F4F6"
