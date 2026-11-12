@@ -145,6 +145,7 @@ def init_db():
         c.execute(text("CREATE INDEX IF NOT EXISTS idx_tx_sms_hash ON transactions(sms_hash, created_at)"))
         if "forgiven" not in {col["name"] for col in inspect(c).get_columns("expense_shares")}:
             c.execute(text("ALTER TABLE expense_shares ADD COLUMN forgiven INTEGER NOT NULL DEFAULT 0"))
+        _fix_from_savings_silo(c)
         if not _rows(c, "SELECT 1 FROM settings WHERE key='categories_seeded'"):
             names = DEFAULT_CATEGORIES + [r['category'] for r in _rows(c, "SELECT DISTINCT category FROM transactions")]
             for order, name in enumerate(names):
@@ -831,6 +832,28 @@ def delete_unparsed(uid: int):
         c.execute(text("DELETE FROM unparsed_sms WHERE id=:i"), {"i": uid})
 
 
+def _fix_from_savings_silo(c):
+    """One-time: rebuild the stored food silo correctly, since earlier builds let the daily
+    rollover double-count 'from savings' food purchases. Recomputed from transactions, so it is
+    accurate as of the last rollover regardless of the buggy history. Runs once (flag-guarded)."""
+    if _rows(c, "SELECT 1 FROM settings WHERE key='from_savings_silo_corrected'"):
+        return
+    s = {r['key']: r['value'] for r in _rows(c, "SELECT key,value FROM settings WHERE key IN "
+         "('food_silo_start','food_silo_last_update','target_daily')")}
+    start, last = s.get('food_silo_start'), s.get('food_silo_last_update')
+    if start and last and start < last:
+        target = float(s.get('target_daily', 350.0))
+        spent = _rows(c, "SELECT COALESCE(SUM(amount - COALESCE((SELECT SUM(cents)/100.0 "
+                     "FROM expense_shares WHERE transaction_id=t.id),0)),0) AS s FROM transactions t "
+                     "WHERE date>=:st AND date<:lu AND category='Food' AND direction='debit' "
+                     "AND from_savings=0 "
+                     "AND (is_peer=0 OR EXISTS (SELECT 1 FROM expense_shares WHERE transaction_id=t.id))",
+                     st=start, lu=last)[0]['s']
+        days = (date.fromisoformat(last) - date.fromisoformat(start)).days
+        _put_setting(c, 'food_silo_balance', str(target * days - float(spent)))
+    _put_setting(c, 'from_savings_silo_corrected', '1')
+
+
 def update_food_silo(today: date, target_daily: float | None = None):
     """Serialize the rollover and re-read its checkpoint inside the transaction."""
     today_str = str(today)
@@ -849,9 +872,12 @@ def update_food_silo(today: date, target_daily: float | None = None):
             return
         current_silo = float(settings.get('food_silo_balance', 0))
         if last_date is not None:
+            # from_savings purchases are drawn from savings by the read-time overlay, so the
+            # daily rollover must NOT also count them here, or food-tagged ones subtract twice.
             spending = _rows(c, "SELECT SUM(amount - COALESCE((SELECT SUM(cents)/100.0 "
                              "FROM expense_shares WHERE transaction_id=t.id),0)) AS s FROM transactions t "
                              "WHERE date>=:s AND date<:e AND category='Food' AND direction='debit' "
+                             "AND from_savings=0 "
                              "AND (is_peer=0 OR EXISTS (SELECT 1 FROM expense_shares WHERE transaction_id=t.id))",
                              s=str(last_date), e=today_str)[0]['s'] or 0
             current_silo += target_daily * (today - last_date).days - float(spending)

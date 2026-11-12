@@ -59,6 +59,27 @@ class FromSavingsTests(unittest.TestCase):
         db.edit_transaction(tx_id, 'Big grocery', 'Food', from_savings=True)
         self.assertEqual(float(db.get_setting('food_silo_balance')), 1000)  # food spend returned
 
+    def test_food_tagged_from_savings_is_not_counted_by_the_rollover(self):
+        # Regression: a Food purchase tagged "from savings" must not be subtracted by the daily
+        # rollover (the overlay already draws it) — otherwise it hits the silo twice.
+        db.set_setting('food_silo_balance', 1000)
+        db.set_setting('food_silo_last_update', '2026-09-30')
+        db.add_transaction('2026-10-01', 'Big grocery', 800, category='Food', from_savings=True)
+        db.update_food_silo(date(2026, 10, 2))
+        self.assertEqual(float(db.get_setting('food_silo_balance')), 1700)  # 2×350 added, 800 not taken
+
+    def test_one_time_correction_recomputes_silo_from_scratch(self):
+        db.set_setting('food_silo_start', '2026-09-25')
+        db.set_setting('food_silo_last_update', '2026-10-02')  # 7 days rolled
+        db.add_transaction('2026-09-28', 'Groceries', 500, category='Food')
+        db.add_transaction('2026-09-29', 'Costco', 1200, category='Food', from_savings=True)
+        db.set_setting('food_silo_balance', 750)  # a wrong value left by the old double-count
+        with db.conn() as c:
+            c.execute(db.text("DELETE FROM settings WHERE key='from_savings_silo_corrected'"))
+            db._fix_from_savings_silo(c)
+        # Rebuilt correctly: 7×350 − 500 normal food; the tagged ₹1200 is excluded.
+        self.assertEqual(float(db.get_setting('food_silo_balance')), 1950)
+
 
 if __name__ == '__main__':
     unittest.main()

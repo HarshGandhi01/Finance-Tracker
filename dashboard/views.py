@@ -131,6 +131,8 @@ def render_overview(db):
         if poker_txs:
             poker_breakdown(poker_txs, "this month" if breakdown_month else "this cycle")
         manual_transaction_editor(db, today)
+        if current:
+            big_payment_planner(m, today)
     txs = m["txs"]
     # "From savings" purchases are funded by banked savings, not this cycle's budget.
     spending_txs = [t for t in txs if not t["from_savings"]]
@@ -158,7 +160,6 @@ def render_overview(db):
         if current:
             budget_culprits(spending_txs, m["safe_to_spend"], days, allowance, m["target_daily"],
                             breakdown_month)
-            big_payment_planner(m, today)
         budget_explainer(m, days, allowance)
 
 
