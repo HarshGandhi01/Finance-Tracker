@@ -941,17 +941,14 @@ def compute_metrics(month: str, today: date, target_daily: float | None = None) 
     reserved = 0.0
     rollover = float(settings.get("rollover_balance", 0.0))
 
-    food_silo = float(settings.get("food_silo_balance", 0.0))
-    # Food savings after big "from savings" purchases made since the last savings reset.
-    with conn() as c:
-        tagged_ever = _rows(c, "SELECT COALESCE(SUM(amount),0) AS n FROM transactions "
-                            "WHERE from_savings=1 AND direction='debit' AND date>=:s",
-                            s=settings.get("food_silo_start", ""))[0]["n"]
-    food_savings = food_silo - float(tagged_ever)
-    # Neutralise this cycle's tagged purchases in the allowance, but only up to the savings
-    # that existed before them; overdrawing savings stops the protection (verdict can't lie).
-    savings_before_cycle_tags = food_savings + tagged_cycle
-    savings_cover = min(tagged_cycle, max(savings_before_cycle_tags, 0.0))
+    # Food savings = eating discipline only: days × target − food spending, i.e. what you banked
+    # by eating under budget. Big "pay from savings" buys do NOT reduce it (they leave your bank
+    # balance instead), so eating under target can never read as negative savings.
+    food_savings = float(settings.get("food_silo_balance", 0.0))
+    # A tagged buy still shouldn't tank the daily allowance, so neutralise this cycle's tagged
+    # spend — but only up to the savings you've actually banked; overdrawing past the reserve
+    # stops the protection (the verdict can't lie about being cooked).
+    savings_cover = min(tagged_cycle, max(food_savings, 0.0))
     spendable = balance + savings_cover
     safe_to_spend = spendable
 

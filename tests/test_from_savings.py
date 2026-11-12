@@ -35,9 +35,9 @@ class FromSavingsTests(unittest.TestCase):
         base = db.compute_metrics('2026-09-25', date(2026, 10, 2))
         db.add_transaction('2026-10-01', 'Headphones', 1500, category='Other', from_savings=True)
         m = db.compute_metrics('2026-09-25', date(2026, 10, 2))
-        self.assertEqual(m['food_rollover'], 500)                 # 2000 savings − 1500 purchase
+        self.assertEqual(m['food_rollover'], 2000)                # eating pot unchanged by the buy
         self.assertEqual(m['balance'], 3500)                      # cash really left the account
-        self.assertEqual(m['safe_to_spend'], base['safe_to_spend'])  # allowance protected
+        self.assertEqual(m['safe_to_spend'], base['safe_to_spend'])  # allowance still protected
         self.assertEqual(m['burn'], base['burn'])                 # kept out of spending
 
     def test_overdrawing_savings_stops_protection(self):
@@ -45,9 +45,9 @@ class FromSavingsTests(unittest.TestCase):
         db.set_balance(5000)
         db.add_transaction('2026-10-01', 'Laptop', 3000, category='Other', from_savings=True)
         m = db.compute_metrics('2026-09-25', date(2026, 10, 2))
-        self.assertEqual(m['food_rollover'], -2000)   # savings goes negative, a visible warning
+        self.assertEqual(m['food_rollover'], 1000)    # eating pot shown as-is, never dragged negative
         self.assertEqual(m['balance'], 2000)
-        # Only the 1000 that existed is protected; the other 2000 really hits spendable cash.
+        # Only the 1000 you banked is protected; the other 2000 really hits spendable cash.
         self.assertEqual(m['safe_to_spend'], 3000)
 
     def test_tagging_a_food_purchase_returns_it_to_the_silo(self):

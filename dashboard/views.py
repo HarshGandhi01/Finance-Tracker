@@ -495,8 +495,9 @@ def transaction_editor(db, t, cat_options, existing_splits, rules):
                 remember = remember_checked
             from_savings = st.checkbox("Pay from savings (big one-off)", value=bool(t['from_savings']),
                                        key=f"fromsav_{t['id']}",
-                                       help="Funded by your Food savings: kept out of your daily "
-                                            "budget and spending charts, and drawn from savings.")
+                                       help="Big one-off buy: kept out of your daily budget and "
+                                            "spending charts so it won't look like blown food "
+                                            "spending. It still leaves your bank balance.")
         if st.button("Save changes", key=f"save_{t['id']}", type="primary", width="stretch"):
             try:
                 db.edit_transaction(t['id'], merchant, new_cat, remember, from_savings)
@@ -570,8 +571,8 @@ def manual_transaction_editor(db, today):
         auto_tag = m_dir == "debit" and st.checkbox("Use this category for future payments here")
         m_from_savings = m_dir == "debit" and st.checkbox(
             "Pay from savings (big one-off)",
-            help="Funded by your Food savings: kept out of your daily budget and spending charts, "
-                 "and drawn from savings.")
+            help="Big one-off buy: kept out of your daily budget and spending charts so it won't "
+                 "look like blown food spending. It still leaves your bank balance.")
 
         manual_splits = split_fields(db, m_amount, 'manual') if m_dir == 'debit' else []
         if st.button("Log transaction", width="stretch", disabled=manual_splits is None):
